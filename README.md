@@ -37,7 +37,14 @@ NodeJS :
 
 ## Benchmarks
 
-TODO
+The presented bench have been run on my computer (Dell Inspiron 15 5000 with a Intel(R) Core(TM) i5-1035G1 CPU), on nodejs / native rust.
+
+For the tested `.match` function calls, we are always faster than [Graphy](https://graphy.link/) and [sophia_wasm](https://github.com/BruJu/Portable-Reasoning-in-Web-Assembly/tree/master/sophia-wasm) and we are sometimes faster than Sophia itself.
+
+[Benchmark's plot can be found here](benchmark/plots.ipynb)
+
+TODO : provide the benchmark infrastructure because currently, we are basically saying "on some mysterious benchmark we won't provide and probably have a bias, we are better. Trust us"
+
 
 ## Licence
 
