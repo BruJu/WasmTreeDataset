@@ -228,11 +228,17 @@ impl<'a> Iterator for FilteredIndexQuads<'a> {
     }
 }
 
-/// A treed dataset is a forest of trees that implements the Dataset trait
-/// of Sophia.
+/// A treed dataset is a forest of trees.
 /// 
 /// It is composed of several trees, with a main tree and several optional
 /// subtrees.
+/// 
+/// The trees are sorted in different orders, so for each (S?, P?, O?, G?)
+/// combinaison (when each S, P ... can be specified or not), we have an
+/// efficient way to find every quad that matches the query.
+/// 
+/// Up to 6 different trees are built, with the OGPS tree being built by
+/// default
 #[wasm_bindgen]
 pub struct TreedDataset {
     /// The tree that is always instancied
@@ -435,7 +441,7 @@ impl TreedDataset {
 
 #[wasm_bindgen]
 impl TreedDataset {
-    /// Adds the given quad
+    /// Returns the number of quads
     pub fn size(&self) -> usize {
         self.base_tree.1.len()
     }
@@ -469,8 +475,13 @@ impl TreedDataset {
 impl TreedDataset {
     /// Returns a slice with every quad flattened
     pub fn get_all(&self, s: Option<u32>, p: Option<u32>, o: Option<u32>, g: Option<u32>) -> Box<[u32]> {
+        // We return a Box<[u32]> because :
+        // 1- wasm bindgen has a memory friendly way to return this data structure (no memory leak)
+        // 2- memcpy-ing is stupidly fast
+
         self.filter([s, p, o, g])
             .map(|quad| {
+                // TODO : building a vec is not efficient but I can't find the syntax to flat_map a [u32; 4]
                 let mut vec = vec!();
                     vec.push(quad[0]);
                     vec.push(quad[1]);
