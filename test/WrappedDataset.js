@@ -20,22 +20,6 @@ function makeWrapperDataset(l) {
 
 
   describe('DatasetCore', () => {
-    describe('factory', () => {
-      it('should be a function', () => {
-        assert.strictEqual(typeof makeWrapperDataset, 'function')
-      })
-
-      it('should add the given Quads', () => {
-        const quad1 = rdf.quad(ex.subject, ex.predicate, ex.object1)
-        const quad2 = rdf.quad(ex.subject, ex.predicate, ex.object2)
-
-        const dataset = makeWrapperDataset([quad1, quad2])
-
-        assert(dataset.has(quad1))
-        assert(dataset.has(quad2))
-      })
-    })
-
     describe('size', () => {
       it('should be a number property', () => {
         const dataset = makeWrapperDataset()
@@ -113,7 +97,6 @@ function makeWrapperDataset(l) {
         assert(dataset.has(quad2))
       })
 
-/*
       it('should be chainable', () => {
         const quad1 = rdf.quad(ex.subject, ex.predicate, ex.object1)
         const quad2 = rdf.quad(ex.subject, ex.predicate, ex.object2)
@@ -126,7 +109,6 @@ function makeWrapperDataset(l) {
 
         assert.strictEqual(dataset.size, 0)
       })
-*/
 
       it('should remove the Quad with the same SPOG as the given Quad', () => {
         const quad = rdf.quad(ex.subject, ex.predicate, ex.object)
