@@ -479,25 +479,22 @@ impl TreedDataset {
         // 1- wasm bindgen has a memory friendly way to return this data structure (no memory leak)
         // 2- memcpy-ing is stupidly fast
 
-        self.filter([s, p, o, g])
-            .map(|quad| {
-                // TODO : building a vec is not efficient but I can't find the syntax to flat_map a [u32; 4]
-                let mut vec = vec!();
-                    vec.push(quad[0]);
-                    vec.push(quad[1]);
-                    vec.push(quad[2]);
-                    vec.push(quad[3]);
-                vec
-            })
-            .flat_map(|quad| quad.into_iter())
-            .collect::<Vec<u32>>()
-            .into_boxed_slice()
+        let mut vector = vec!();
+
+        for quad in self.filter([s, p, o, g]) {
+            vector.push(quad[0]);
+            vector.push(quad[1]);
+            vector.push(quad[2]);
+            vector.push(quad[3]);
+        }
+        
+        vector.into_boxed_slice()
     }
 }
 
 #[wasm_bindgen]
 impl TreedDataset {
-    /// Returns a slice with every quad flattened
+    /// Builds a new dataset which is built by filtering with the given s, p, o and g.
     pub fn new_from(&self, s: Option<u32>, p: Option<u32>, o: Option<u32>, g: Option<u32>) -> TreedDataset {
         let mut new_tree = TreedDataset::new();
         self.filter([s, p, o, g]).for_each(|quad| { new_tree.insert_by_index(quad); } );
@@ -505,3 +502,24 @@ impl TreedDataset {
     }
 }
 
+#[wasm_bindgen]
+impl TreedDataset {
+    /// Builds a TreeDataset from a slice of 4 x u32
+    /// 
+    /// If you have previously extracted a slice from get_all, you can easily build a new dataset with this function
+    pub fn new_from_slice(encoded_quads: &[u32]) -> TreedDataset {
+        let mut new_tree = TreedDataset::new();
+
+        let mut i: usize = 0;
+
+
+        while i + 3 < encoded_quads.len() {
+            new_tree.add(encoded_quads[i], encoded_quads[i + 1], encoded_quads[i + 2], encoded_quads[i + 3]);
+            i = i + 4;
+        }
+
+        
+
+        new_tree
+    }
+}

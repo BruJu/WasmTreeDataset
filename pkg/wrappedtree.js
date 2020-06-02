@@ -120,7 +120,13 @@ class Indexer {
 class WrappedTreeIterator {
     constructor(wrappedTree) {
         this.index = 0;
-        this.data = wrappedTree.tree.get_all(null, null, null, null);
+
+        if (wrappedTree.slice === undefined) {
+            this.data = wrappedTree.tree.get_all(null, null, null, null);
+        } else {
+            this.data = wrappedTree.slice;
+        }
+        
         this.indexer = wrappedTree.indexer;
     }
 
@@ -141,31 +147,6 @@ class WrappedTreeIterator {
             return { value: value, done: false };
         }
     }
-
-    /*
-    let index = 0;
-    let data = this.tree.get_all(null, null, null, null);
-    var indexer = this.indexer;
-    let buildQuad = function(data, indexer) {
-        let spog = [data[index], data[index + 1], data[index + 2], data[index + 3]]
-        index = index + 4;
-        for (let i = 0 ; i != 4 ; ++i) {
-            if (spog[i] === undefined) return undefined;
-            let actualTerm = indexer.getTerm(spog[i]);
-            if (actualTerm === undefined) return undefined;
-            spog[i] = actualTerm;
-        }
-
-        return graphyFactory.quad(spog[0], spog[1], spog[2], spog[3]);
-    }
-
-    return {
-        next: function() {
-            return { value: buildQuad(data, indexer), done: index > data.length }
-        }
-    };
-    */
-
 }
 
 /**
@@ -175,33 +156,56 @@ class WrappedTreeIterator {
 class WrappedTree {
     /**
      * Constructs a Wrapped Tree
-     * @param {*} baseTree If provided, the wasm trees
      * @param {*} indexer If provided, the indexer to uses
+     * @param {*} slice If provided, some numbers that represents the quads.
      */
-    constructor(baseTree, indexer) {
-        if (baseTree === undefined) {
+    constructor(indexer, slice) {
+        if (indexer === undefined) {
+            this.indexer = new Indexer();
             this.tree = new rust.TreedDataset();
+            this.slice = undefined;
         } else {
-            this.tree = baseTree;
+            this.indexer = indexer;
+            this.tree = undefined;
+            this.slice = slice;
         }
-        
-        this.indexer = indexer === undefined ? new Indexer() : indexer;
-        // TODO : pattern matching
+    }
+
+    /** Falls back to the tree structure if a slice is owned */
+    _ensure_has_tree() {
+        if (this.slice !== undefined) {
+            this.tree = rust.TreedDataset.new_from_slice(this.slice);
+            this.slice = undefined;
+        }
+
+        if (this.tree === undefined) {
+            this.tree = new rust.TreedDataset();
+        }
     }
 
     /**
-     * Liberates the memory allocated by wasm for the tree
+     * Liberates the memory allocated by wasm for the tree and empties the tree
      */
     free() {
-        this.tree.free();
+        if (this.tree !== undefined) {
+            this.tree.free();
+            this.tree = undefined;
+        }
+
+        this.slice = undefined;
     }
 
     /**
      * Returns the number of contained elements.
      */
     get size() {
-        // TODO : use pattern match in size
-        return this.tree.size();
+        if (this.tree !== undefined) {
+            return this.tree.size();
+        } else if (this.slice !== undefined) {
+            return this.slice.length / 4;
+        } else {
+            return 0;
+        }
     }
 
     [Symbol.iterator]() {
@@ -213,6 +217,8 @@ class WrappedTree {
      * @param {*} quad 
      */
     add(quad) {
+        this._ensure_has_tree();
+
         let quadIndexes = this.indexer.findOrAddIndexes(quad);
         this.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         return this;
@@ -226,6 +232,7 @@ class WrappedTree {
         let quadIndexes = this.indexer.findIndexes(quad);
 
         if (quadIndexes !== null) {
+            this._ensure_has_tree();
             this.tree.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         }
 
@@ -242,6 +249,9 @@ class WrappedTree {
         if (quadIndexes === null) {
             return false;
         } else {
+            // TODO : if we have a slice, we could try to ask to rust to find the quad (but beware of copy)
+            // Note : Even if a copy is done, we could create another state which is "Rust owns a copy"
+            this._ensure_has_tree();
             return this.tree.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         }
     }
@@ -258,27 +268,27 @@ class WrappedTree {
         // Rewrite match parameters with indexes
         if (!isLikeNone(subject)) {
             subject = this.indexer.findIndex(subject);
-            if (isLikeNone(subject)) return new WrappedTree();
+            if (isLikeNone(subject)) return new WrappedTree(this.indexer);
         }
 
         if (!isLikeNone(predicate)) {
             predicate = this.indexer.findIndex(predicate);
-            if (isLikeNone(predicate)) return new WrappedTree();
+            if (isLikeNone(predicate)) return new WrappedTree(this.indexer);
         }
 
         if (!isLikeNone(object)) {
             object = this.indexer.findIndex(object);
-            if (isLikeNone(object)) return new WrappedTree();
+            if (isLikeNone(object)) return new WrappedTree(this.indexer);
         }
 
         if (!isLikeNone(graph)) {
             graph = this.indexer.findIndex(graph);
-            if (isLikeNone(graph)) return new WrappedTree();
+            if (isLikeNone(graph)) return new WrappedTree(this.indexer);
         }
 
         // Match is valid
-        let builtTree = this.tree.new_from(subject, predicate, object, graph);
-        return new WrappedTree(builtTree, this.indexer);
+        let slice = this.tree.get_all(subject, predicate, object, graph);
+        return new WrappedTree(this.indexer, slice);
     }
 }
 
