@@ -420,7 +420,13 @@ impl TreedDataset {
     }
 }
 
-// Wasm bindgened interface
+
+// ============================================================================
+// ==== WASM BINDGENED INTERFACE
+
+// We write one impl block per function to make it easier to debug (if we have
+// a compile error, the compiler says there is an error in the whole impl block,
+// splitting in different impl blocks help identifying the bugged function)
 
 #[wasm_bindgen]
 impl TreedDataset {
@@ -510,15 +516,14 @@ impl TreedDataset {
     pub fn new_from_slice(encoded_quads: &[u32]) -> TreedDataset {
         let mut new_tree = TreedDataset::new();
 
-        let mut i: usize = 0;
-
-
-        while i + 3 < encoded_quads.len() {
-            new_tree.add(encoded_quads[i], encoded_quads[i + 1], encoded_quads[i + 2], encoded_quads[i + 3]);
-            i = i + 4;
+        for i in 0..(encoded_quads.len() / 4) {
+            new_tree.add(
+                encoded_quads[i],
+                encoded_quads[i + 1],
+                encoded_quads[i + 2],
+                encoded_quads[i + 3]
+            );
         }
-
-        
 
         new_tree
     }

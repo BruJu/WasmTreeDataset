@@ -67,7 +67,7 @@ class Indexer {
     /**
      * Returns an array of four indexes, corresponding to the terms from the
      * quad. If a term is not known yet, a new index will be created
-     * @param {Object} quad A RDF.JS complient quad
+     * @param {Object} quad A RDF.JS compliant quad
      */
     findOrAddIndexes(quad) {
         return [
@@ -81,7 +81,7 @@ class Indexer {
     /**
      * Returns an array of four indexes, corresponding to the terms from the
      * quad. If a term is not known yet, null will be returned
-     * @param {Object} quad A RDF.JS complient quad
+     * @param {Object} quad A RDF.JS compliant quad
      */
     findIndexes(quad) {
         let quadIndexes = [
@@ -287,6 +287,7 @@ class WrappedTree {
         }
 
         // Match is valid
+        this._ensure_has_tree();
         let slice = this.tree.get_all(subject, predicate, object, graph);
         return new WrappedTree(this.indexer, slice);
     }
