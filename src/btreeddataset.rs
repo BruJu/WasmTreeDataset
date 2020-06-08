@@ -629,6 +629,21 @@ impl TreedDataset {
     }
 }
 
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen(js_name="intersectSlice")]
+    pub fn intersect_slice(&self, other: &[u32]) -> TreedDataset {
+        let mut new_tree = Self::new();
+
+        for i in 0..other.len() / 4 {
+            if self.has(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]) {
+                new_tree.add(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]);
+            }
+        }
+
+        new_tree
+    }
+}
 
 #[wasm_bindgen]
 impl TreedDataset {

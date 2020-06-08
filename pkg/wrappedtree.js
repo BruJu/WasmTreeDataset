@@ -556,7 +556,7 @@ class WrappedTree {
             }
 
             if (quadFilterIteratee(it.value)) {
-                this.indexer.writeTermIndexesIn(resultingArray, i, mappedQuad);
+                this.indexer.writeTermIndexesIn(resultingArray, i, it.value);
                 i += 4;
             }
         }
@@ -647,7 +647,7 @@ class WrappedTree {
      * other dataset
      * @param {DatasetCore} other The dataset to intersect with
      */
-    insersection(other) {
+    intersection(other) {
         this._ensure_has_tree();
 
         let similarity = this._get_degree_of_similarity(other);
