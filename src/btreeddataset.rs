@@ -19,7 +19,7 @@ pub enum TermRole {
 
 /// A block is a structure that can be stored in a BTreeSet to store quads in
 /// a certain order
-#[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
+#[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Clone, Copy)]
 pub struct Block<T> {
     data: [T; 4],
 }
@@ -53,6 +53,7 @@ impl <T> Block<T> where T: Clone + PartialEq {
 /// It provides methods to manipulate the elements of a `BTreeSet<Block>`
 /// by using functions that takes as input or returns an array of four u32
 /// representing the quad indexes
+#[derive(Clone, Copy)]
 pub struct BlockOrder {
     term_roles: [TermRole; 4],
     to_block_index_to_destination: [usize; 4],
@@ -197,6 +198,15 @@ impl BlockOrder {
             term_filter: term_filter
         }
     }
+
+    pub fn build_new_tree_by_filtering(&self, source: &BTreeSet<Block<u32>>, spog: &[Option<u32>; 4]) -> BTreeSet<Block<u32>> {
+        let filter_block = self.to_filter_block(spog);
+
+        source.into_iter()
+            .filter(|block| !block.match_option_block(&filter_block))
+            .map(|b| b.clone())
+            .collect()
+    }
 }
 
 /// An iterator on a sub tree
@@ -249,12 +259,12 @@ pub struct TreedDataset {
 }
 
 impl TreedDataset {
-    pub fn new_with_indexes(default_initialized: &Vec<[TermRole; 4]>, optional_indexes: Option<&Vec<[TermRole; 4]>>) -> TreedDataset {
+    pub fn new_with_blocks(default_initialized: Vec<BlockOrder>, optional_blocks: Vec<BlockOrder>) -> TreedDataset {
         assert!(!default_initialized.is_empty());
 
         // Base tree
         let base_tree = (
-            BlockOrder::new(default_initialized[0]),
+            default_initialized[0],
             BTreeSet::new()
         );
 
@@ -268,7 +278,7 @@ impl TreedDataset {
             assert!(set_result.is_ok());
 
             let new_tree = (
-                BlockOrder::new(default_initialized[i]),
+                default_initialized[i],
                 cell
             );
 
@@ -276,16 +286,25 @@ impl TreedDataset {
         }
 
         // Optionals
-        if let Some(optional_indexes) = optional_indexes {
-            for optional_index in optional_indexes {
-                optional_trees.push((BlockOrder::new(*optional_index), OnceCell::new()));
-            }
+        for optional_index in optional_blocks {
+            optional_trees.push((optional_index, OnceCell::new()));
         }
 
         TreedDataset {
             base_tree: base_tree,
             optional_trees: optional_trees
         }
+    }
+
+    pub fn new_with_indexes(default_initialized: &Vec<[TermRole; 4]>, optional_indexes: Option<&Vec<[TermRole; 4]>>) -> TreedDataset {
+        let default_initialized_blocks: Vec<BlockOrder> = default_initialized.into_iter().map(|terms_role| BlockOrder::new(*terms_role)).collect();
+        let optional_indexes_blocks: Vec<BlockOrder> =
+            match optional_indexes {
+                None => vec!(),
+                Some(optional_indexes) => optional_indexes.into_iter().map(|terms_role| BlockOrder::new(*terms_role)).collect()
+            };
+        
+        Self::new_with_blocks(default_initialized_blocks, optional_indexes_blocks)
     }
 
     pub fn default() -> TreedDataset {
@@ -528,3 +547,158 @@ impl TreedDataset {
         new_tree
     }
 }
+
+// ==== RDF.JS Dataset backend implementation
+// (https://rdf.js.org/dataset-spec/#dataset-interface)
+
+#[wasm_bindgen]
+impl TreedDataset {
+    /// Removes from the dataset the quads that matches the given pattern
+    #[wasm_bindgen(js_name = deleteMatches)]
+    pub fn delete_matches(&mut self, s: Option<u32>, p: Option<u32>, o: Option<u32>, g: Option<u32>) {
+        // We did not find a way to remove in place the quads.
+        //
+        // For example, if we want to delete every quad this 5 as a subject, we
+        // could pick the SPOG tree and we could easily find where is the first
+        // quad with 5 as a subject, where is the last one, and remove in batch
+        // this nodes. It is not currently possible.
+        //
+        // As a consequence, we are forced to rebuild the tree for deleting the
+        // quads that matches a certain pattern.
+        //
+        // Because we rebuild trees, we deletes every trees, loop on the whole
+        // surviving tree to rebuild a new one, and keep the rebuilt one.
+        //
+        // This means modifying in place could heavily increase the
+        // performances.
+        //
+        // Other approches to tackle the "we have multiple trees" could have
+        // been :
+        // 1- Shrink the dataset to only one tree (after computing the optimal
+        // tree to delete)
+        // 2- Have a counter to choose whetever we do 1 or 2 (if we often delete,
+        // we may delete other trees to rebuild them later)
+
+        let spog = [s, p, o, g];
+
+        // Delete every secondary tree. We do this first to let the new tree
+        // eventually reuse the allocated memory of the former trees
+        for optional_tree_tuple in self.optional_trees.iter_mut() {
+            optional_tree_tuple.1.take();
+        }
+
+        // Build the new filtered tree and replace the old one
+        let new_tree = self.base_tree.0.build_new_tree_by_filtering(&self.base_tree.1, &spog);
+        self.base_tree.1 = new_tree;
+    }
+}
+
+impl TreedDataset {
+    pub fn are_trivially_mergeable_trees(lhs: &Self, rhs: &Self) -> bool {
+        // TODO : static_assert
+        // TODO : be able to merge indexes that are not the first from new
+        let expected_block = [TermRole::Object, TermRole::Graph, TermRole::Predicate, TermRole::Subject];
+        lhs.base_tree.0.term_roles == expected_block && rhs.base_tree.0.term_roles == expected_block
+    }
+
+    fn new_tree_from_fusion<'a, ITER>(iterator: ITER) -> Self
+        where ITER: Iterator<Item=&'a Block<u32>> {
+        let mut new_tree = Self::new();
+        new_tree.base_tree.1.extend(iterator);
+        new_tree
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen]
+    pub fn insersect(&self, other: &TreedDataset) -> TreedDataset {
+        if TreedDataset::are_trivially_mergeable_trees(self, other) {
+            Self::new_tree_from_fusion(self.base_tree.1.intersection(&other.base_tree.1))
+        } else {
+            let mut new_tree = Self::new();
+
+            for quad in self.filter([None, None, None, None]) {
+                if other.has(quad[0], quad[1], quad[2], quad[3]) {
+                    new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+                }
+            }
+
+            new_tree
+        }
+    }
+}
+
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen]
+    pub fn union(&self, other: &TreedDataset) -> TreedDataset {
+        if TreedDataset::are_trivially_mergeable_trees(self, other) {
+            Self::new_tree_from_fusion(self.base_tree.1.union(&other.base_tree.1))
+        } else {
+            let mut new_tree = Self::new();
+
+            for quad in self.filter([None, None, None, None]) {
+                new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+            }
+
+            for quad in other.filter([None, None, None, None]) {
+                new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+            }
+            
+            new_tree
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen]
+    pub fn difference(&self, other: &TreedDataset) -> TreedDataset {
+        if TreedDataset::are_trivially_mergeable_trees(self, other) {
+            Self::new_tree_from_fusion(self.base_tree.1.difference(&other.base_tree.1))
+        } else {
+            let mut new_tree = Self::new();
+
+            for quad in self.filter([None, None, None, None]) {
+                if !other.has(quad[0], quad[1], quad[2], quad[3]) {
+                    new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+                }
+            }
+            
+            new_tree
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen]
+    pub fn contains(&self, other: &TreedDataset) -> bool {
+        if TreedDataset::are_trivially_mergeable_trees(self, other) {
+            self.base_tree.1.is_superset(&other.base_tree.1)
+        } else {
+            for quad in self.filter([None, None, None, None]) {
+                if !other.has(quad[0], quad[1], quad[2], quad[3]) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen]
+    pub fn has_same_elements(&self, other: &TreedDataset) -> bool {
+        if self.base_tree.1.len() != other.base_tree.1.len() {
+            return false;
+        }
+
+        self.contains(other)
+    }
+}
+
