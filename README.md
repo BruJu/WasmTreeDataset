@@ -46,6 +46,6 @@ For the tested `.match` function calls, we are always faster than [Graphy](https
 TODO : provide the benchmark infrastructure because currently, we are basically saying "on some mysterious benchmark we won't provide and probably have a bias, we are better. Trust us"
 
 
-## Licence
+## License
 
-TODO
+MIT License
