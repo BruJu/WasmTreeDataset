@@ -17,16 +17,28 @@ This repository is :
 
 NodeJS :
 
+### Install dependencies
+
 - `npm install @graphy/core.data.factory` (we rely on Graphy's terms and concise method)
 
+TODO : If i was a good programmer I would create a package.json file that requires user to only use `npm intall`
+
+### Compile
+
 - `wasm-pack build`
+
 - Keep the `rust_tree*` files and the `wrappedtree.js` file
+
+### Usage
 - Import : `let wt = require (./wrappedtree.js);`
 
-- Use our dataset : `let dataset = new wt.TreeDataset();` which implements https://rdf.js.org/dataset-spec/#datasetcore-interface
+#### Use our dataset
+
+- `let dataset = new wt.TreeDataset();` which implements https://rdf.js.org/dataset-spec/#datasetcore-interface
 - Use `dataset.free()` to free wasm linear memory
 
-- Use our store : `let store = new wt.TreeStore();` which implements http://rdf.js.org/stream-spec/#store-interface
+#### Use our store
+- `let store = new wt.TreeStore();` which implements http://rdf.js.org/stream-spec/#store-interface
 - Use `store.free()` to free wasm linear memory
 
 
