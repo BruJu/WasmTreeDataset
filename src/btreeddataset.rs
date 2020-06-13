@@ -363,8 +363,11 @@ impl TreedDataset {
         )
     }
 
-    /// Returns an iterator on quads represented by their indexes from the 
-    pub fn filter<'a>(&'a self, spog: [Option<u32>; 4]) -> FilteredIndexQuads {
+    /// Returns an iterator on quads represented by their indexes from the dataset
+    /// 
+    /// This function can potentially build a new tree in the structure if the `can_build_new_tree` parameter is
+    /// equal to true.
+    pub fn search_all_matching_quads<'a>(&'a self, spog: [Option<u32>; 4], can_build_new_tree: bool) -> FilteredIndexQuads {
         // Find best index
         let term_roles = [&spog[0], &spog[1], &spog[2], &spog[3]];
 
@@ -372,10 +375,12 @@ impl TreedDataset {
         let mut best_index_score = self.base_tree.0.index_conformance(&term_roles);
         
         for i in 0..self.optional_trees.len() {
-            let score = self.optional_trees[i].0.index_conformance(&term_roles);
-            if score > best_index_score {
-                best_alt_tree_pos = Some(i);
-                best_index_score = score;
+            if can_build_new_tree || self.optional_trees[i].1.get().is_some() {
+                let score = self.optional_trees[i].0.index_conformance(&term_roles);
+                if score > best_index_score {
+                    best_alt_tree_pos = Some(i);
+                    best_index_score = score;
+                }
             }
         }
 
@@ -400,6 +405,15 @@ impl TreedDataset {
         };
 
         tree_description.0.filter(&tree_description.1, spog)
+    }
+
+    /// Returns an iterator on quads represented by their indexes from the dataset
+    /// 
+    /// This function will always build a new tree if a better indexation is possible for this
+    /// tree. If you do not want to pay the potential cost of building a new tree, call the
+    /// `search_all_matching_quads` function.
+    pub fn filter<'a>(&'a self, spog: [Option<u32>; 4]) -> FilteredIndexQuads {
+        self.search_all_matching_quads(spog, true)
     }
 
     /// Inserts in the dataset the quad described by the given array of indexes.
@@ -551,45 +565,46 @@ impl TreedDataset {
 // ==== RDF.JS Dataset backend implementation
 // (https://rdf.js.org/dataset-spec/#dataset-interface)
 
+impl TreedDataset {
+    pub fn number_of_optional_built_trees(&self) -> usize {
+        self.optional_trees
+            .iter()
+            .filter(|pair| pair.1.get().is_some())
+            .count()
+    }
+
+}
+
 #[wasm_bindgen]
 impl TreedDataset {
     /// Removes from the dataset the quads that matches the given pattern
     #[wasm_bindgen(js_name = deleteMatches)]
     pub fn delete_matches(&mut self, s: Option<u32>, p: Option<u32>, o: Option<u32>, g: Option<u32>) {
-        // We did not find a way to remove in place the quads.
-        //
-        // For example, if we want to delete every quad this 5 as a subject, we
-        // could pick the SPOG tree and we could easily find where is the first
-        // quad with 5 as a subject, where is the last one, and remove in batch
-        // this nodes. It is not currently possible.
-        //
-        // As a consequence, we are forced to rebuild the tree for deleting the
-        // quads that matches a certain pattern.
-        //
-        // Because we rebuild trees, we deletes every trees, loop on the whole
-        // surviving tree to rebuild a new one, and keep the rebuilt one.
-        //
-        // This means modifying in place could heavily increase the
-        // performances.
-        //
-        // Other approches to tackle the "we have multiple trees" could have
-        // been :
-        // 1- Shrink the dataset to only one tree (after computing the optimal
-        // tree to delete)
-        // 2- Have a counter to choose whetever we do 1 or 2 (if we often delete,
-        // we may delete other trees to rebuild them later)
+        // 1- Find quads that matches
+        let quads = self.search_all_matching_quads([s, p, o, g], false).collect::<Vec<[u32; 4]>>();
 
-        let spog = [s, p, o, g];
+        let ratio_threshhold = 2 + self.number_of_optional_built_trees();
 
-        // Delete every secondary tree. We do this first to let the new tree
-        // eventually reuse the allocated memory of the former trees
-        for optional_tree_tuple in self.optional_trees.iter_mut() {
-            optional_tree_tuple.1.take();
+        if quads.len() < self.size() / ratio_threshhold {
+            // 2- Remove quads if there are not a lot to remove
+
+            for quad in quads {
+                self.delete_by_index(quad);
+            }
+        } else {
+            // 2- If there are a lot, rebuild tree
+            let spog = [s, p, o, g];
+
+            // Delete every secondary tree. We do this first to let the new tree
+            // eventually reuse the allocated memory of the former trees
+            for optional_tree_tuple in self.optional_trees.iter_mut() {
+                optional_tree_tuple.1.take();
+            }
+    
+            // Build the new filtered tree and replace the old one
+            let new_tree = self.base_tree.0.build_new_tree_by_filtering(&self.base_tree.1, &spog);
+            self.base_tree.1 = new_tree;
         }
-
-        // Build the new filtered tree and replace the old one
-        let new_tree = self.base_tree.0.build_new_tree_by_filtering(&self.base_tree.1, &spog);
-        self.base_tree.1 = new_tree;
     }
 }
 
