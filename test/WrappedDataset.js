@@ -3,12 +3,12 @@
 const assert = require('assert')
 const namespace = require('@rdfjs/namespace')
 
-function runTests (rdf) {
+function runTests (rdf, DatasetClass) {
   const ex = namespace('http://example.org/', rdf)
 
 
 function makeWrapperDataset(l) {
-	let dataset = new rdf.WrappedDataset();
+	let dataset = new DatasetClass();
 	
 	if (l != undefined) {
 		for (let q of l) {

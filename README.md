@@ -1,4 +1,4 @@
-# Wasm Tree Dataset
+# Wasm Tree Dataset & Store
 
 My repository https://github.com/BruJu/Portable-Reasoning-in-Web-Assembly tries
 to exports Sophia Dataset : it is slow.
@@ -22,8 +22,13 @@ NodeJS :
 - `wasm-pack build`
 - Keep the `rust_tree*` files and the `wrappedtree.js` file
 - Import : `let wt = require (./wrappedtree.js);`
-- Use our dataset : `let dataset = new wt.WrappedDataset();` which implements https://rdf.js.org/dataset-spec/#datasetcore-interface
+
+- Use our dataset : `let dataset = new wt.TreeDataset();` which implements https://rdf.js.org/dataset-spec/#datasetcore-interface
 - Use `dataset.free()` to free wasm linear memory
+
+- Use our store : `let store = new wt.TreeStore();` which implements http://rdf.js.org/stream-spec/#store-interface
+- Use `store.free()` to free wasm linear memory
+
 
 ## Tests
 
@@ -33,6 +38,7 @@ NodeJS :
 
 - `./pkg/package.json` is wrong, fix it (wasm-pack should understand we have an extra layer of js)
 - Lazily initialize the matched datasets
+- Finish the Dataset (partial) implementation
 - Use `wasm-pack test` instead of `mocha`
 
 ## Benchmarks
@@ -43,9 +49,8 @@ For the tested `.match` function calls, we are always faster than [Graphy](https
 
 [Benchmark's plot can be found here](benchmark/plots.ipynb)
 
-TODO : provide the benchmark infrastructure because currently, we are basically saying "on some mysterious benchmark we won't provide and probably have a bias, we are better. Trust us"
+[The benchmark infrastructure can be found here](https://github.com/BruJu/wasm_rdf_benchmark)
 
+## License
 
-## Licence
-
-TODO
+MIT License

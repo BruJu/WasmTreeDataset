@@ -1,5 +1,8 @@
 let graphyFactory = require('@graphy/core.data.factory');
 let rust = require('./rusttree.js')
+const EventEmitter = require('events');
+const { Readable } = require('stream');
+
 
 // TODO : convert every_snake_case_name into camelCase
 
@@ -175,6 +178,40 @@ class Indexer {
 
         return array;
     }
+
+    /**
+     * Transforms the subject, predicate, object and graph received as Terms
+     * into indexes. If a matching could not be done, returns null. Else,
+     * returns an array with the indexes or null/undefined when the term was
+     * already null or undefined.
+     * @param {?Term} subject 
+     * @param {?Term} predicate 
+     * @param {?Term} object 
+     * @param {?Term} graph 
+     */
+    _matchIndexes(subject, predicate, object, graph) {
+        if (!isLikeNone(subject)) {
+            subject = this.findIndex(subject);
+            if (isLikeNone(subject)) return null;
+        }
+
+        if (!isLikeNone(predicate)) {
+            predicate = this.findIndex(predicate);
+            if (isLikeNone(predicate)) return null;
+        }
+
+        if (!isLikeNone(object)) {
+            object = this.findIndex(object);
+            if (isLikeNone(object)) return null;
+        }
+
+        if (!isLikeNone(graph)) {
+            graph = this.findIndex(graph);
+            if (isLikeNone(graph)) return null;
+        }
+
+        return [subject, predicate, object, graph]
+    }
 }
 
 /** An iterator on a Wrapped Tree */
@@ -208,7 +245,7 @@ class WrappedTreeIterator {
  * A RDF.JS DatasetCore that resorts on a wasm exported structure that
  * uses several TreeSet and an Indexer.
  */
-class WrappedTree {
+class TreeDataset {
     /**
      * Constructs a Wrapped Tree
      * 
@@ -319,40 +356,6 @@ class WrappedTree {
     }
 
     /**
-     * Transforms the subject, predicate, object and graph received as Terms
-     * into indexes. If a matching could not be done, returns null. Else,
-     * returns an array with the indexes or null/undefined when the term was
-     * already null or undefined.
-     * @param {?Term} subject 
-     * @param {?Term} predicate 
-     * @param {?Term} object 
-     * @param {?Term} graph 
-     */
-    _matchIndexes(subject, predicate, object, graph) {
-        if (!isLikeNone(subject)) {
-            subject = this.indexer.findIndex(subject);
-            if (isLikeNone(subject)) return null;
-        }
-
-        if (!isLikeNone(predicate)) {
-            predicate = this.indexer.findIndex(predicate);
-            if (isLikeNone(predicate)) return null;
-        }
-
-        if (!isLikeNone(object)) {
-            object = this.indexer.findIndex(object);
-            if (isLikeNone(object)) return null;
-        }
-
-        if (!isLikeNone(graph)) {
-            graph = this.indexer.findIndex(graph);
-            if (isLikeNone(graph)) return null;
-        }
-
-        return [subject, predicate, object, graph]
-    }
-
-    /**
      * Returns a new dataset with the specified subject, predicate, object and
      * graph, if provided
      * @param {*} subject The subject or null
@@ -362,15 +365,15 @@ class WrappedTree {
      */
     match(subject, predicate, object, graph) {
         // Rewrite match parameters with indexes
-        let matchResult = this._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
         if (matchResult === null) {
-            return new WrappedTree(this.indexer);
+            return new TreeDataset(this.indexer);
         }
 
         // Match is valid
         this._ensure_has_tree();
         let slice = this.tree.get_all(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
-        return new WrappedTree(this.indexer, slice);
+        return new TreeDataset(this.indexer, slice);
     }
 
     // ========================================================================
@@ -391,7 +394,7 @@ class WrappedTree {
      * @param {?Term} graph The graph of the quads to remove, or null / undefined
      */
     deleteMatches(subject, predicate, object, graph) {
-        let matchResult = this._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
         if (matchResult === null) {
             return this;
         }
@@ -571,7 +574,7 @@ class WrappedTree {
 
         // The resulting array is a valid dataset for our structure, so we do
         // not fall back to wasm backend.
-        return new WrappedTree(this.indexer, resultingArray);
+        return new TreeDataset(this.indexer, resultingArray);
     }
 
     /**
@@ -608,7 +611,7 @@ class WrappedTree {
         // slice into a Wasm managed tree (which resorts on Rust's BTreeSet)
         // Conveniently, the `ensure_has_tree` function produces exactly this
         // behaviour.
-        let newWrappedTree = new WrappedTree(this.indexer, resultingArray);
+        let newWrappedTree = new TreeDataset(this.indexer, resultingArray);
         newWrappedTree._ensure_has_tree();
         return newWrappedTree;
     }
@@ -622,8 +625,8 @@ class WrappedTree {
 
     /**
      * Return :
-     * - 0 if the other dataset is not an instance of WrappedTree
-     * - 1 if the other dataset is an instance of WrappedTree but does not
+     * - 0 if the other dataset is not an instance of TreeDataset
+     * - 1 if the other dataset is an instance of TreeDataset but does not
      * share its indexer object with other
      * - 2 if both this dataset and the other dataset are instances of Wrapped
      * Tree and share the indexer object
@@ -632,13 +635,13 @@ class WrappedTree {
     _get_degree_of_similarity(other) {
         if (this._are_both_wrapped_trees != other._are_both_wrapped_trees) {
             // Different class
-            return WrappedTree.SIMILARITY_NONE;
+            return TreeDataset.SIMILARITY_NONE;
         } else if (this.indexer != other.indexer) {
             // Different indexer
-            return WrappedTree.SIMILARITY_SAME_CLASS;
+            return TreeDataset.SIMILARITY_SAME_CLASS;
         } else {
             // Same class and same indexer which means we can rely on a pure Rust implementation
-            return WrappedTree.SIMILARITY_SAME_INDEXER;
+            return TreeDataset.SIMILARITY_SAME_INDEXER;
         }
     }
 
@@ -654,7 +657,7 @@ class WrappedTree {
 
         let intersectionTree;
 
-        if (similarity == WrappedTree.SIMILARITY_SAME_INDEXER) {
+        if (similarity == TreeDataset.SIMILARITY_SAME_INDEXER) {
             // Same tree structure : we can directly use the wasm backend
             other._ensure_has_tree();
             intersectionTree = this.tree.insersect(other.tree);
@@ -664,7 +667,7 @@ class WrappedTree {
             intersectionTree = this.tree.intersectSlice(intersectionIndexes);
         }
 
-        return new WrappedTree(this.indexer, undefined, intersectionTree);
+        return new TreeDataset(this.indexer, undefined, intersectionTree);
     }
 
     // Dataset                           difference (Dataset other);
@@ -690,4 +693,134 @@ class WrappedTree {
     // String                            toString ();
 }
 
-module.exports = WrappedTree;
+// ============================================================================
+// ============================================================================
+// ==== Store Implementation
+
+/** Launch an asynchronous function */
+function asyncCall(functionToAsync) {
+    // Source : https://stackoverflow.com/a/17361722
+    setTimeout(functionToAsync, 0);
+}
+
+
+/**
+ * A Stream of Quads with the elements contained in the passed slice
+ */
+class WasmTreeStoreMatch extends Readable {
+    constructor(indexer, slice) {
+        super({ "objectMode": true });
+        this.slice = slice;
+        this.indexer = indexer;
+        this.index = 0;
+    }
+
+    _read() {
+        if (this.index >= this.slice.length) {
+            this.push(null);
+        } else {
+            let spogIndexes = [
+                this.slice[this.index],
+                this.slice[this.index + 1],
+                this.slice[this.index + 2],
+                this.slice[this.index + 3]
+            ];
+
+            this.index += 4;
+
+            this.push(this.indexer.getQuad(spogIndexes));
+        }
+    }
+}
+
+class TreeStore {
+    constructor() {
+        this.tree = new rust.TreedDataset();
+        this.indexer = new Indexer();
+    }
+
+    match(subject, predicate, object, graph) {
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        if (matchResult == null) {
+            return new WasmTreeStoreMatch(this.indexer, []);
+        } else {
+            let slice = this.tree.get_all(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+            return new WasmTreeStoreMatch(this.indexer, slice)
+        }
+    }
+
+    import(streamOfQuads) {
+        let that = this;
+
+        streamOfQuads.on('data', quad => {
+            let quadIndexes = that.indexer.findOrAddIndexes(quad);
+            that.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        });
+
+        return streamOfQuads;
+    }
+
+    remove(streamOfQuads) {
+        // TODO : a valid strategy would be to batch remove the quads from the rust dataset using a buffer and
+        // the end event to remove the last buffered quads
+        let that = this;
+
+        streamOfQuads.on('data', quad => {
+            let quadIndexes = that.indexer.findIndexes(quad);
+
+            if (quadIndexes !== null) {
+                that.tree.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            }
+        });
+
+        return streamOfQuads;
+    }
+
+    removeMatches(subject, predicate, object, graph) {
+        let eventEmitter = new EventEmitter();
+
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        if (matchResult == null) {
+            eventEmitter.emit('end');
+        } else {
+            let that = this;
+            
+            asyncCall(() => {
+                that.tree.deleteMatches(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+                eventEmitter.emit('end');
+            });
+        }
+
+        return eventEmitter;
+    }
+
+    deleteGraph(graph) {
+        if (Object.prototype.toString.call(graph) === "[object String]") {
+            // TODO : we could directly concise the graph name instead of using an intermediate NamedNode
+            graph = graphyFactory.namedNode(graph);
+        }
+
+        return this.removeMatches(null, null, null, graph);
+    }
+
+    /**
+     * Liberates the memory allocated by wasm for the tree. Any further call on this store object is
+     * undefined behavior.
+     */
+    free() {
+        if (this.tree !== undefined) {
+            this.tree.free();
+            this.tree = undefined;
+        } else {
+            // TODO : Use the same free = empty the store semantic as TreeDataset
+            console.log("🐓 Yay undefined behavior 🐓");
+        }
+    }
+}
+
+
+module.exports = {};
+
+module.exports.TreeDataset = TreeDataset;
+module.exports.TreeStore = TreeStore;
+
