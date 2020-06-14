@@ -10,4 +10,4 @@ let TreeStore   = wasmexport.TreeStore;
 
 require('./WrappedDatasetCore')(rdf, TreeDataset)
 require('./WrappedDataset'    )(rdf, TreeDataset)
-//require('./Store'             )(rdf, TreeStore)
+require('./Store'             )(rdf, TreeStore)
