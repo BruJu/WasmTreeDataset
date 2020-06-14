@@ -3,6 +3,17 @@ use std::collections::BTreeSet;
 
 use wasm_bindgen::prelude::*;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn log(s: &str);
+
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    pub fn log_u32(a: u32);
+
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    pub fn log_i32(a: i32);
+}
 
 /// This class is basically a huge copy/paste from
 /// https://github.com/BruJu/Portable-Reasoning-in-Web-Assembly/blob/master/sophia-wasm/src/btreeddataset.rs
@@ -543,21 +554,25 @@ impl TreedDataset {
 
 #[wasm_bindgen]
 impl TreedDataset {
+
+    pub fn insert_all_from_slice(&mut self, encoded_quads: &[u32]) {
+        for i in 0..(encoded_quads.len() / 4) {
+            self.add(
+                encoded_quads[i * 4 + 0],
+                encoded_quads[i * 4 + 1],
+                encoded_quads[i * 4 + 2],
+                encoded_quads[i * 4 + 3]
+            );
+        }
+    }
+
+
     /// Builds a TreeDataset from a slice of 4 x u32
     /// 
     /// If you have previously extracted a slice from get_all, you can easily build a new dataset with this function
     pub fn new_from_slice(encoded_quads: &[u32]) -> TreedDataset {
         let mut new_tree = TreedDataset::new();
-
-        for i in 0..(encoded_quads.len() / 4) {
-            new_tree.add(
-                encoded_quads[i],
-                encoded_quads[i + 1],
-                encoded_quads[i + 2],
-                encoded_quads[i + 3]
-            );
-        }
-
+        new_tree.insert_all_from_slice(encoded_quads);
         new_tree
     }
 }
@@ -646,7 +661,7 @@ impl TreedDataset {
 
 #[wasm_bindgen]
 impl TreedDataset {
-    #[wasm_bindgen(js_name="intersectSlice")]
+    #[wasm_bindgen(js_name = intersectSlice)]
     pub fn intersect_slice(&self, other: &[u32]) -> TreedDataset {
         let mut new_tree = Self::new();
 
@@ -654,6 +669,36 @@ impl TreedDataset {
             if self.has(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]) {
                 new_tree.add(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]);
             }
+        }
+
+        new_tree
+    }
+
+    #[wasm_bindgen(js_name = unionSlice)]
+    pub fn union_slice(&self, other: &[u32]) -> TreedDataset {
+        let mut new_tree = Self::new();
+
+        for quad in self.filter([None, None, None, None]) {
+            new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+        }
+
+        for i in 0..other.len() / 4 {
+            new_tree.add(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]);
+        }
+
+        new_tree
+    }
+
+    #[wasm_bindgen(js_name = differenceSlice)]
+    pub fn difference_slice(&self, other: &[u32]) -> TreedDataset {
+        let mut new_tree = Self::new();
+
+        for quad in self.filter([None, None, None, None]) {
+            new_tree.add(quad[0], quad[1], quad[2], quad[3]);
+        }
+
+        for i in 0..other.len() / 4 {
+            new_tree.delete_by_index([other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]]);
         }
 
         new_tree
@@ -709,14 +754,43 @@ impl TreedDataset {
         if TreedDataset::are_trivially_mergeable_trees(self, other) {
             self.base_tree.1.is_superset(&other.base_tree.1)
         } else {
-            for quad in self.filter([None, None, None, None]) {
-                if !other.has(quad[0], quad[1], quad[2], quad[3]) {
+            for quad in other.filter([None, None, None, None]) {
+                if !self.has(quad[0], quad[1], quad[2], quad[3]) {
                     return false;
                 }
             }
             
-            return true;
+            true
         }
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen(js_name = containsSlice)]
+    pub fn contains_slice(&self, other: &[u32]) -> bool {
+        assert!(other.len() % 4 == 0);
+        let mut i = 0;
+        while i != other.len() / 4 { 
+            if !self.has(other[i * 4], other[i * 4 + 1], other[i * 4 + 2], other[i * 4 + 3]) {
+                return false;
+            }
+            i = i + 1;
+        }
+
+        true
+    }
+}
+
+#[wasm_bindgen]
+impl TreedDataset {
+    #[wasm_bindgen(js_name = equalsSlice)]
+    pub fn equals_slice(&self, other: &[u32]) -> bool {
+        if self.base_tree.1.len() != other.len() / 4 {
+            return false;
+        }
+
+        self.contains_slice(other)
     }
 }
 

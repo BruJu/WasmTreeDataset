@@ -140,6 +140,13 @@ class Indexer {
         array[startingPosition + 3] = this.findOrAddIndex(quad.graph)
     }
 
+    pushTermIndexesIn(array, quad) {
+        array.push(this.findOrAddIndex(quad.subject));
+        array.push(this.findOrAddIndex(quad.predicate));
+        array.push(this.findOrAddIndex(quad.object));
+        array.push(this.findOrAddIndex(quad.graph));
+    }
+
     /**
      * Build an array that is suitable to pass to a wasm tree that uses
      * the indexes described by this indexer for the intersection function (or
@@ -168,12 +175,39 @@ class Indexer {
      * @param {*} dataset The other dataset
      */
     buildSliceForUnion(dataset) {
-        let array = new Array(dataset.length * 4);
+        const length = dataset.length;
+        if (isLikeNone(length)) {
+            // We do not know in advance the length of the dataset. Only use the iterator
+            let array = [];
 
-        let i = 0;
+            for (let quad of dataset) {
+                this.pushTermIndexesIn(array, quad);
+            }
+
+            return array;
+        } else {
+            let array = new Array(dataset.length * 4);
+
+            let i = 0;
+            for (let quad of dataset) {
+                this.writeTermIndexesIn(array, i, quad);
+                i += 4;
+            }
+
+            return array;
+        }
+    }
+
+    buildSliceForEquals(dataset) {
+        let array = [];
+
         for (let quad of dataset) {
-            this.writeTermIndexesIn(array, i, quad);
-            i += 4;
+            let indexes = this.findIndexes(quad);
+            if (indexes != null) {
+                array.push(...indexes);
+            } else {
+                return null;
+            }
         }
 
         return array;
@@ -603,6 +637,7 @@ class TreeDataset {
             this.indexer.writeTermIndexesIn(resultingArray, i, mappedQuad);
             i += 4;
         }
+
         
         // Return the new tree
         // We can not return the tree with just the resultingArray as it may
@@ -645,51 +680,115 @@ class TreeDataset {
         }
     }
 
+    _operationWithAnotherDataset(other, functionToCallIfSame, functionToCallIfDifferent, finalize) {
+        this._ensure_has_tree();
+
+        let similarity = this._get_degree_of_similarity(other);
+
+        if (similarity == TreeDataset.SIMILARITY_SAME_INDEXER) {
+            other._ensure_has_tree();
+            return finalize(this, functionToCallIfSame(this, other));
+        } else {
+            return finalize(this, functionToCallIfDifferent(this, other));
+        }
+    }
+
     /**
      * Returns a dataset which is the intersection of this dataset and the
      * other dataset
      * @param {DatasetCore} other The dataset to intersect with
      */
     intersection(other) {
-        this._ensure_has_tree();
-
-        let similarity = this._get_degree_of_similarity(other);
-
-        let intersectionTree;
-
-        if (similarity == TreeDataset.SIMILARITY_SAME_INDEXER) {
-            // Same tree structure : we can directly use the wasm backend
-            other._ensure_has_tree();
-            intersectionTree = this.tree.insersect(other.tree);
-        } else {
-            // Different tree structure : we have to compute the indexes to pass
-            let intersectionIndexes = this.indexer.buildSliceForIntersection(other);
-            intersectionTree = this.tree.intersectSlice(intersectionIndexes);
-        }
-
-        return new TreeDataset(this.indexer, undefined, intersectionTree);
+        return this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.insersect(rhs.tree),
+            (lhs, rhs) => {
+                let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
+                return lhs.tree.intersectSlice(rhsSlice);
+            },
+            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+        );
     }
 
-    // Dataset                           difference (Dataset other);
+    /**
+     * Return a new dataset that is the difference between this one and the passed dataset
+     * @param {*} other The other dataset
+     */
+    difference(other) {
+        return this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.difference(rhs.tree),
+            (lhs, rhs) => {
+                let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
+                return lhs.tree.differenceSlice(rhsSlice);
+            },
+            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+        );
+    }
 
-    // Dataset                           union (Dataset quads);
+    union(other) {
+        return this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.union(rhs.tree),
+            (lhs, rhs) => {
+                let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
+                return lhs.tree.unionSlice(rhsSlice);
+            },
+            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+        );
+    }
     
-    // boolean                           contains (Dataset other);
-    // boolean                           equals (Dataset other);
+    contains(other) {
+        return this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.contains(rhs.tree),
+            (lhs, rhs) => {
+                let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
+                if (rhsSlice == null) {
+                    return false;
+                } else {
+                    return lhs.tree.containsSlice(rhsSlice);
+                }
+            },
+            (_, answer) => answer
+        );
+    }
+
+    equals(other) {
+        return this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.has_same_elements(rhs.tree),
+            (lhs, rhs) => {
+                let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
+                if (rhsSlice == null) {
+                    return false;
+                } else {
+                    return lhs.tree.equalsSlice(rhsSlice);
+                }
+            },
+            (_, answer) => answer
+        );
+    }
 
     // == ALMOST ENSEMBLIST OPERATION
 
-    // Dataset                           addAll ((Dataset or sequence<Quad>) quads);
 
+    addAll(other) {
+        this._operationWithAnotherDataset(other,
+            (lhs, rhs) => lhs.tree.addAll(rhs.tree),
+            (lhs, rhs) => {
+                // As buildSliceForUnion use the fact that a RDF.JS dataset
+                // have to implement Iterable<Quad>, a Sequence<Quad> can
+                // also be passed to buildSliceForUnion.
+                let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
+                lhs.tree.insert_all_from_slice(rhsSlice);
+            },
+            (_1, _2) => { return; }
+        );
+    }
 
-
+    // Promise<Dataset>                  import (Stream stream);
+    // Stream                            toStream ();
 
     // ==== LEFTOVER FUNCTIONS
     // aka why we are not a RDF.JS Dataset
 
-    // Promise<Dataset>                  import (Stream stream);
     // String                            toCanonical ();
-    // Stream                            toStream ();
     // String                            toString ();
 }
 
