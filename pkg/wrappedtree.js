@@ -911,6 +911,24 @@ class TreeStore {
     }
 
     /**
+     * Synchronously returns the number of quads that will match the given pattern
+     * @param {*} subject Required subject or null 
+     * @param {*} predicate Required predicate or null
+     * @param {*} object Required object or null
+     * @param {*} graph Required graph or null
+     */
+    matchCount(subject, predicate, object, graph) {
+        if (this.tree === null) return 0;
+
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        if (matchResult == null) {
+            return 0;
+        } else {
+            return this.tree.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+        }
+    }
+
+    /**
      * Adds in this store every quad from the given stream of quads.
      * @param {*} streamOfQuads The stream of quads
      */
@@ -1024,3 +1042,5 @@ module.exports = {};
 
 module.exports.TreeDataset = TreeDataset;
 module.exports.TreeStore = TreeStore;
+module.exports.Store = TreeStore;
+

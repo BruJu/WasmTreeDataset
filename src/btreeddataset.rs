@@ -806,3 +806,12 @@ impl TreedDataset {
     }
 }
 
+#[wasm_bindgen]
+impl TreedDataset {
+    /// Counts the number of quads that matches the given pattern
+    #[wasm_bindgen]
+    pub fn match_count(&self, s: Option<u32>, p: Option<u32>, o: Option<u32>, g: Option<u32>) -> usize {
+        let spog = [s, p, o, g];
+        return self.search_all_matching_quads(spog, true).count();
+    }
+}

@@ -98,6 +98,26 @@ function runTests (rdf, StoreClass) {
       checkMatch(store, getArrayOfQuads())
     })
   })
+
+  describe("matchCount", () => {
+    it("should return 0 on empty stores", () => {
+      const store = new StoreClass();
+      assert(store.matchCount() == 0);
+    })
+
+    it("should count the number of matching quads", () => {
+      const store = new StoreClass();
+      store.import(getAStreamOfQuads())
+        .on('end', () => {
+          assert(store.matchCount(null, null, ex.o2), 3);
+          assert(store.matchCount(null, ex.p), 6);
+          assert(store.matchCount(), 6);
+        })
+
+      assert(store.matchCount() == 0);
+    })
+
+  })
 }
 
 
