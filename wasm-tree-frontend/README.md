@@ -24,7 +24,7 @@ https://rdf.js.org/dataset-spec/
 
 We currently do not implement `import`, `toStream`, `toString` and `toCanonical`.
 
-Also note that the equals function does not normalize ta collaborative project from LIRIShe black node as specified.
+Also note that the equals function does not normalize the black node as specified.
 
 
 ## Store
