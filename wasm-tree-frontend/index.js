@@ -1,6 +1,5 @@
 let graphyFactory = require('@graphy/core.data.factory');
-//let rust = require('@bruju/wasm-tree-backend');
-let rust = require('../wasm-tree-backend/pkg')
+const rust = require('@bruju/wasm-tree-backend');
 const EventEmitter = require('events');
 const { Readable } = require('stream');
 

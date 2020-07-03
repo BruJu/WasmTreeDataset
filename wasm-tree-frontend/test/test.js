@@ -2,7 +2,7 @@
 
 var rdf = require('@graphy/core.data.factory')
 
-let wasmexport = require('../pkg/wrappedtree')
+let wasmexport = require('../index.js')
 
 
 let TreeDataset = wasmexport.TreeDataset;

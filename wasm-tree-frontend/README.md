@@ -51,6 +51,7 @@ let dataset = new wasmtree.Dataset();
 let store = new wasmtree.Store();
 
 // Do some interesting work
+
 dataset.free();
 store.free();
 ```
