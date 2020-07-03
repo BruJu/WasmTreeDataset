@@ -3,6 +3,9 @@ use std::collections::BTreeSet;
 
 use wasm_bindgen::prelude::*;
 
+// TODO : build a propery Rust library for the tree structure
+// that can be used either by wasm tree and by sophia_rs
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]

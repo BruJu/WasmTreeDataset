@@ -1,8 +1,8 @@
 let graphyFactory = require('@graphy/core.data.factory');
-let rust = require('./rusttree.js')
+//let rust = require('@bruju/wasm-tree-backend');
+let rust = require('../wasm-tree-backend/pkg')
 const EventEmitter = require('events');
 const { Readable } = require('stream');
-
 
 // TODO : convert every_snake_case_name into camelCase
 
@@ -1070,9 +1070,14 @@ function storeStream(stream) {
     return new Promise(resolve => store.import(stream).on("end", () => resolve(store)));
 }
 
+// Exports
 
 module.exports = {};
+
 module.exports.TreeDataset = TreeDataset;
 module.exports.TreeStore = TreeStore;
+
+module.exports.Dataset = TreeDataset;
 module.exports.Store = TreeStore;
+
 module.exports.storeStream = storeStream;

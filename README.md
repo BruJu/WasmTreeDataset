@@ -1,5 +1,13 @@
 # Wasm Tree Dataset & Store
 
+An implementation of RDF.JS Dataset and Store that partly resorts to Web
+Assembly.
+
+Check [wasm-tree-frontend/README.md](wasm-tree-frontend/README.md) for proper
+documentation about "how to use ?"
+
+## Context
+
 My repository https://github.com/BruJu/Portable-Reasoning-in-Web-Assembly tries
 to exports Sophia Dataset : it is slow.
 
@@ -9,49 +17,20 @@ in Javascript ?" (+ There are other reason like exporting everything causes
 major memory leaks because Javascript does not have destructor)
 
 This repository is :
-- A BTreeDataset written in Rust that uses numbers (`src/btreeddataset.rs`)
-- A Javascript Wrapper class that tries to be RDF.JS.org compliant (`pkg/wrappedtree.js`)
 
+- A BTreeDataset written in Rust that uses numbers (the backend)
 
-## Getting Started
+- A Javascript Wrapper class that tries to be RDF.JS.org compliant (the frontend)
 
-NodeJS :
-
-### Install dependencies
-
-- `npm install @graphy/core.data.factory` (we rely on Graphy's terms and concise method)
-
-TODO : If i was a good programmer I would create a package.json file that requires user to only use `npm intall`
-
-### Compile
-
-- `wasm-pack build`
-
-- Keep the `rust_tree*` files and the `wrappedtree.js` file
-
-### Usage
-- Import : `let wt = require (./wrappedtree.js);`
-
-#### Use our dataset
-
-- `let dataset = new wt.TreeDataset();` which implements https://rdf.js.org/dataset-spec/#datasetcore-interface
-- Use `dataset.free()` to free wasm linear memory
-
-#### Use our store
-- `let store = new wt.TreeStore();` which implements http://rdf.js.org/stream-spec/#store-interface
-- Use `store.free()` to free wasm linear memory
 
 
 ## Tests
 
-- Run `./mocha` (`npm install mocha -g` if needed)
+- Run `./mocha` (`npm install mocha -g` if needed) in wasm-tree-frontend.
 
 ## TODO
 
-- `./pkg/package.json` is wrong, fix it (wasm-pack should understand we have an extra layer of js)
-- Lazily initialize the matched datasets
 - Finish the Dataset (partial) implementation
-- Use `wasm-pack test` instead of `mocha`
 
 ## Benchmarks
 
