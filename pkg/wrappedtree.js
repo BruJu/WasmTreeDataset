@@ -824,6 +824,30 @@ class TreeDataset {
 
     // String                            toCanonical ();
     // String                            toString ();
+
+    // ==== OTHER FUNCTIONS
+
+    /**
+     * Returns the number of quads that will match the given pattern
+     * May be used for SPARQL query planning
+     * 
+     * @param {*} subject Required subject or null 
+     * @param {*} predicate Required predicate or null
+     * @param {*} object Required object or null
+     * @param {*} graph Required graph or null
+     */
+    matchCount(subject, predicate, object, graph) {
+        if (this.tree === undefined && this.slice === undefined) return 0;
+
+        this._ensure_has_tree();
+
+        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        if (matchResult == null) {
+            return 0;
+        } else {
+            return this.tree.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+        }
+    }
 }
 
 // ============================================================================
@@ -1037,10 +1061,18 @@ class TreeStore {
     }
 }
 
+/**
+ * Builds a new wasm tree store containing every quad from the stream
+ * @param {RDF.Stream} stream The stream containing the quads.
+ */
+function storeStream(stream) {
+    const store = new TreeStore();
+    return new Promise(resolve => store.import(stream).on("end", () => resolve(store)));
+}
+
 
 module.exports = {};
-
 module.exports.TreeDataset = TreeDataset;
 module.exports.TreeStore = TreeStore;
 module.exports.Store = TreeStore;
-
+module.exports.storeStream = storeStream;
