@@ -835,7 +835,7 @@ class TreeDataset {
      * @param {*} object Required object or null
      * @param {*} graph Required graph or null
      */
-    matchCount(subject, predicate, object, graph) {
+    countQuads(subject, predicate, object, graph) {
         if (this.tree === undefined && this.slice === undefined) return 0;
 
         this._ensure_has_tree();
@@ -940,7 +940,7 @@ class TreeStore {
      * @param {*} object Required object or null
      * @param {*} graph Required graph or null
      */
-    matchCount(subject, predicate, object, graph) {
+    countQuads(subject, predicate, object, graph) {
         if (this.tree === null) return 0;
 
         let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
