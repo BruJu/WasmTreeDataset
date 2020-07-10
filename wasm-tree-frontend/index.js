@@ -13,6 +13,15 @@ function isLikeNone(expr) {
     return expr === undefined || expr === null;
 }
 
+
+let registry = undefined;
+try {
+    registry = new FinalizationRegistry(rusttree => rusttree.free());
+} catch (err) {
+    // FinalizationRegistry is not available
+    registry = undefined;
+}
+
 /**
  * A class that maps terms with numbers.
  * The mapping resorts to Graphy's concise terms and Javascript maps.
@@ -374,6 +383,10 @@ class TreeDataset {
             this.tree = tree;
             this.slice = slice === null ? undefined : slice;
         }
+
+        if (registry && this.tree !== undefined) {
+            registry.register(this, this.tree);
+        }
     }
 
     /** Falls back to the tree structure if a slice is owned */
@@ -383,6 +396,10 @@ class TreeDataset {
                 this.tree = rust.TreedDataset.new_from_slice(this.slice);
             } else {
                 this.tree = new rust.TreedDataset();
+            }
+
+            if (registry) {
+                registry.register(this, this.tree);
             }
         }
     }
@@ -400,6 +417,10 @@ class TreeDataset {
         if (this.tree !== undefined) {
             this.tree.free();
             this.tree = undefined;
+
+            if (registry) {
+                registry.unregister(this);
+            }
         }
 
         this.slice = undefined;
@@ -902,6 +923,10 @@ class TreeStore {
     constructor() {
         this.tree = new rust.TreedDataset();
         this.indexer = new Indexer();
+
+        if (registry) {
+            registry.register(this, this.tree);
+        }
     }
 
     /**
@@ -910,6 +935,10 @@ class TreeStore {
     _ensure_has_tree() {
         if (this.tree === null) {
             this.tree = new rust.TreedDataset();
+
+            if (registry) {
+                registry.register(this, this.tree);
+            }
         }
     }
 
@@ -1038,6 +1067,11 @@ class TreeStore {
         if (this.tree !== null) {
             this.tree.free();
             this.tree = null;
+
+
+            if (registry) {
+                registry.unregister(this);
+            }
         }
     }
 
