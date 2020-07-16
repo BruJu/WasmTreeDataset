@@ -351,3 +351,28 @@ impl ExportedTrees {
         return self.trees.search_all_matching_quads(spog, true).count();
     }
 }
+
+#[wasm_bindgen(js_class="TreedDataset")]
+impl ExportedTrees {
+    /// Ensures the best tree to search quads matching the given pattern is built
+    #[wasm_bindgen]
+    pub fn ensure_has_index_for(&self, s: bool, p: bool, o: bool, g: bool) {
+        let spog: [Option<u32>; 4] = [
+            if s { Some(0) } else { None },
+            if p { Some(0) } else { None },
+            if o { Some(0) } else { None },
+            if g { Some(0) } else { None },
+        ];
+
+        self.trees.search_all_matching_quads(spog, true);
+    }
+}
+
+#[wasm_bindgen(js_class="TreedDataset")]
+impl ExportedTrees {
+    /// Counts the number of underlying trees
+    #[wasm_bindgen]
+    pub fn number_of_underlying_trees(&self) -> usize {
+        1 + self.number_of_optional_built_trees()
+    }
+}

@@ -857,7 +857,7 @@ class TreeDataset {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.tree === undefined && this.slice === undefined) return 0;
+        if (this.tree === null && this.slice === null) return 0;
 
         this._ensure_has_tree();
 
@@ -867,6 +867,28 @@ class TreeDataset {
         } else {
             return this.tree.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
         }
+    }
+
+    /**
+     * Returns the number of trees that are currently used
+     */
+    numberOfUnderlyingTrees() {
+        if (this.tree === null)
+            return 0;
+        return this.tree.number_of_underlying_trees();
+    }
+
+    /**
+     * If the optimal index to answer the match request for the given pattern is not built,
+     * build it
+     * @param {Boolean} subject 
+     * @param {Boolean} predicate 
+     * @param {Boolean} object 
+     * @param {Boolean} graph 
+     */
+    ensureHasIndexFor(subject, predicate, object, graph) {
+        this._ensure_has_tree();
+        this.tree.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
     }
 }
 
@@ -1068,7 +1090,6 @@ class TreeStore {
             this.tree.free();
             this.tree = null;
 
-
             if (registry) {
                 registry.unregister(this);
             }
@@ -1080,6 +1101,7 @@ class TreeStore {
      * @param {*} quad The RDF.JS quad to add
      */
     addQuad(quad) {
+        this._ensure_has_tree();
         let quadIndexes = this.indexer.findOrAddIndexes(quad);
         this.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         return this;
@@ -1091,6 +1113,28 @@ class TreeStore {
      */
     add(quad) {
         return this.addQuad(quad);
+    }
+
+    /**
+     * Returns the number of trees that are currently used
+     */
+    numberOfUnderlyingTrees() {
+        if (this.tree === null)
+            return 0;
+        return this.tree.number_of_underlying_trees();
+    }
+
+    /**
+     * If the optimal index to answer the match request for the given pattern is not built,
+     * build it. This function is synchrone
+     * @param {Boolean} subject 
+     * @param {Boolean} predicate 
+     * @param {Boolean} object 
+     * @param {Boolean} graph 
+     */
+    ensureHasIndexFor(subject, predicate, object, graph) {
+        this._ensure_has_tree();
+        this.tree.ensure_has_index_for(subject, predicate, object, graph);
     }
 }
 
