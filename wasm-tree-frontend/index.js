@@ -389,8 +389,8 @@ class TreeDataset {
             this.indexList = undefined;
         } else {
             this.indexer = indexer;
-            this.forest = forest;
-            this.indexList = indexList === null ? undefined : indexList;
+            this.forest = forest == null ? undefined : forest;
+            this.indexList = indexList == null ? undefined : indexList;
         }
 
         if (woodcutter && this.forest !== undefined) {
@@ -440,6 +440,15 @@ class TreeDataset {
 
         this.indexList = undefined;
     }
+
+    /** Returns true if this dataset currently has a Web Assembly forest */
+    hasForest()    { return this.forest    != undefined; }
+
+    /**
+     * Returns true if the dataset currently has a Javascript list that
+     * represents the quads
+     */
+    hasIndexList() { return this.indexList != undefined; }
 
     // ========================================================================
     // ==== RDF.JS DatasetCore Implementation
@@ -574,12 +583,12 @@ class TreeDataset {
         if (this.indexList === undefined) {
             if (this.forest === undefined) {
                 return [];
-            } else {
-                return this.forest.get_all(null, null, null, null);
             }
-        } else {
-            return this.indexList;
+
+            this.indexList = this.forest.get_all(null, null, null, null);
         }
+
+        return this.indexList;
     }
 
     /**
@@ -876,7 +885,7 @@ class TreeDataset {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.forest === null && this.indexList === null) return 0;
+        if (this.forest === undefined && this.indexList === undefined) return 0;
 
         this._ensureHasForest();
 
