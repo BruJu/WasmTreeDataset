@@ -1,9 +1,7 @@
-let graphyFactory = require('@graphy/core.data.factory');
-const rust = require('@bruju/wasm-tree-backend');
+const graphyFactory = require('@graphy/core.data.factory');
+const wasmTreeBackend = require('@bruju/wasm-tree-backend');
 const EventEmitter = require('events');
 const { Readable } = require('stream');
-
-// TODO : convert every_snake_case_name into camelCase
 
 /**
  * Returns true if expr is undefined or null
@@ -13,14 +11,17 @@ function isLikeNone(expr) {
     return expr === undefined || expr === null;
 }
 
-
-let registry = undefined;
-try {
-    registry = new FinalizationRegistry(rusttree => rusttree.free());
-} catch (err) {
-    // FinalizationRegistry is not available
-    registry = undefined;
-}
+// Use the finalization registry if possible to free the memory by using the
+// garbage collector.
+const woodcutter = (() => {
+    try {
+        const r = new FinalizationRegistry(rustforest => rustforest.free());
+        return r;
+    } catch (err) {
+        // FinalizationRegistry is not available
+        return undefined;
+    }
+})();
 
 /**
  * A class that maps terms with numbers.
@@ -242,7 +243,7 @@ class Indexer {
      * @param {?Term} object 
      * @param {?Term} graph 
      */
-    _matchIndexes(subject, predicate, object, graph) {
+    matchIndexes(subject, predicate, object, graph) {
         if (!isLikeNone(subject)) {
             subject = this.findIndex(subject);
             if (isLikeNone(subject)) return null;
@@ -267,13 +268,13 @@ class Indexer {
     }
 }
 
-/** An iterator on a Wrapped Tree */
-class WrappedTreeIterator {
-    constructor(wrappedTree) {
+/** An iterator on a WasmTreeDataset */
+class WasmTreeDatasetIterator {
+    constructor(wasmTreeDataset) {
         this.index = 0;
-        this.data = wrappedTree._get_slice();
-        this.indexer = wrappedTree.indexer;
-        this.wrappedTree = wrappedTree;
+        this.data = wasmTreeDataset._getIndexList();
+        this.indexer = wasmTreeDataset.indexer;
+        this.wasmTreeDataset = wasmTreeDataset;
     }
 
     next() {
@@ -294,6 +295,14 @@ class WrappedTreeIterator {
         }
     }
 
+    /**
+     * Builds a new Uint32Array which contains the index quads read from
+     * this iterator which returns true for the `quadFilterIteratee` predicate
+     * when converted to a term quad.
+     * 
+     * Consumes the whole iterator.
+     * @param {*} quadFilterIteratee 
+     */
     filterInUInt32Array(quadFilterIteratee) {
         const resultArrayLength = this.data.length - this.index;
         let resultingArray = new Uint32Array(resultArrayLength);
@@ -306,7 +315,7 @@ class WrappedTreeIterator {
                 break;
             }
 
-            if (quadFilterIteratee(it.value, this.wrappedTree)) {
+            if (quadFilterIteratee(it.value, this.wasmTreeDataset)) {
                 // We could do a look up of the terms from it.value, but can
                 // just look back the term indexes
                 resultingArray[i + 0] = this.data[this.index - 4 + 0];
@@ -351,7 +360,7 @@ class WrappedTreeIterator {
                 break;
             }
 
-            let mappedQuad = quadMapIteratee(it.value, this.wrappedTree);
+            let mappedQuad = quadMapIteratee(it.value, this.wasmTreeDataset);
             this.indexer.writeTermIndexesIn(resultingArray, i, mappedQuad);
             i += 4;
         }
@@ -366,64 +375,70 @@ class WrappedTreeIterator {
  */
 class TreeDataset {
     /**
-     * Constructs a Wrapped Tree
+     * Constructs a WasmTreeDataset
      * 
-     * slice and tree arguments are used only if an indexer is provided
+     * indexList and forest arguments are used only if an indexer is provided
      * @param {*} indexer If provided, the indexer to uses
-     * @param {*} slice If provided, some numbers that represents the quads.
-     * @param {*} tree If provided the used tree
+     * @param {*} indexList If provided, some numbers that represents the quads.
+     * @param {*} forest If provided the used forest
      */
-    constructor(indexer, slice, tree) {
+    constructor(indexer, indexList, forest) {
         if (indexer === undefined) {
             this.indexer = new Indexer();
-            this.tree = new rust.TreedDataset();
-            this.slice = undefined;
+            this.forest = new wasmTreeBackend.TreedDataset();
+            this.indexList = undefined;
         } else {
             this.indexer = indexer;
-            this.tree = tree;
-            this.slice = slice === null ? undefined : slice;
+            this.forest = forest;
+            this.indexList = indexList === null ? undefined : indexList;
         }
 
-        if (registry && this.tree !== undefined) {
-            registry.register(this, this.tree);
+        if (woodcutter && this.forest !== undefined) {
+            woodcutter.register(this, this.forest);
         }
-    }
-
-    /** Falls back to the tree structure if a slice is owned */
-    _ensure_has_tree() {
-        if (this.tree === undefined) {
-            if (this.slice !== undefined) {
-                this.tree = rust.TreedDataset.new_from_slice(this.slice);
-            } else {
-                this.tree = new rust.TreedDataset();
-            }
-
-            if (registry) {
-                registry.register(this, this.tree);
-            }
-        }
-    }
-
-    /** Ensures a tree is owned and no slice is owned */
-    _ensure_has_modifiable_tree() {
-        this._ensure_has_tree();
-        this.slice = undefined;
     }
 
     /**
-     * Liberates the memory allocated by wasm for the tree and empties the tree
+     * Falls back to the Web Assembly forest structure.
+     * 
+     * If an index list is owned, the forest will contain the same quads. Else,
+     * it will be empty.
+     */
+    _ensureHasForest() {
+        if (this.forest === undefined) {
+            if (this.indexList !== undefined) {
+                this.forest = wasmTreeBackend.TreedDataset.new_from_slice(this.indexList);
+            } else {
+                this.forest = new wasmTreeBackend.TreedDataset();
+            }
+
+            if (woodcutter) {
+                woodcutter.register(this, this.forest);
+            }
+        }
+    }
+
+    /** Ensures a forest is owned and no index list is owned */
+    _ensureHasModifiableForest() {
+        this._ensureHasForest();
+        this.indexList = undefined;
+    }
+
+    /**
+     * Liberates the memory allocated by Web Assembly for the forest and empties
+     * the dataset
      */
     free() {
-        if (this.tree !== undefined) {
-            this.tree.free();
-            this.tree = undefined;
+        if (this.forest !== undefined) {
+            this.forest.free();
+            this.forest = undefined;
 
-            if (registry) {
-                registry.unregister(this);
+            if (woodcutter) {
+                woodcutter.unregister(this);
             }
         }
 
-        this.slice = undefined;
+        this.indexList = undefined;
     }
 
     // ========================================================================
@@ -434,17 +449,17 @@ class TreeDataset {
      * Returns the number of contained elements.
      */
     get size() {
-        if (this.slice !== undefined) {
-            return this.slice.length / 4;
-        } else if (this.tree !== undefined) {
-            return this.tree.size();
+        if (this.indexList !== undefined) {
+            return this.indexList.length / 4;
+        } else if (this.forest !== undefined) {
+            return this.forest.size();
         } else {
             return 0;
         }
     }
 
     [Symbol.iterator]() {
-        return new WrappedTreeIterator(this);
+        return new WasmTreeDatasetIterator(this);
     }
 
     /**
@@ -452,10 +467,10 @@ class TreeDataset {
      * @param {*} quad 
      */
     add(quad) {
-        this._ensure_has_modifiable_tree();
+        this._ensureHasModifiableForest();
 
         let quadIndexes = this.indexer.findOrAddIndexes(quad);
-        this.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         return this;
     }
 
@@ -467,8 +482,8 @@ class TreeDataset {
         let quadIndexes = this.indexer.findIndexes(quad);
 
         if (quadIndexes !== null) {
-            this._ensure_has_modifiable_tree();
-            this.tree.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            this._ensureHasModifiableForest();
+            this.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         }
 
         return this;
@@ -484,10 +499,10 @@ class TreeDataset {
         if (quadIndexes === null) {
             return false;
         } else {
-            // TODO : if we have a slice, we could try to ask to rust to find the quad (but beware of copy)
-            // Note : Even if a copy is done, we could create another state which is "Rust owns a copy"
-            this._ensure_has_tree();
-            return this.tree.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            // TODO : Instead of building a forest, we could create a new intermediate state
+            // where the backend owns an indexList but has not yet built any tree.
+            this._ensureHasForest();
+            return this.forest.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         }
     }
 
@@ -501,15 +516,17 @@ class TreeDataset {
      */
     match(subject, predicate, object, graph) {
         // Rewrite match parameters with indexes
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult === null) {
             return new TreeDataset(this.indexer);
         }
 
         // Match is valid
-        this._ensure_has_tree();
-        let slice = this.tree.get_all(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
-        return new TreeDataset(this.indexer, slice);
+        this._ensureHasForest();
+        let indexList = this.forest.get_all(
+            matchResult[0], matchResult[1], matchResult[2], matchResult[3]
+        );
+        return new TreeDataset(this.indexer, indexList);
     }
 
     // ========================================================================
@@ -530,17 +547,17 @@ class TreeDataset {
      * @param {?Term} graph The graph of the quads to remove, or null / undefined
      */
     deleteMatches(subject, predicate, object, graph) {
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult === null) {
             return this;
         }
 
-        this._ensure_has_modifiable_tree();
-        this.tree.deleteMatches(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+        this._ensureHasModifiableForest();
+        this.forest.deleteMatches(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
         return this;
     }
     
-    // == SLICE EXPLOITATION
+    // == INDEX QUAD LIST EXPLOITATION
     // Theses functions requires Web Assembly to return the whole array of
     // indexes and do all the operation in Javascript.
     //
@@ -548,20 +565,20 @@ class TreeDataset {
     // Javascript closures
 
     /**
-     * Returns a slice with every quads in a format of an array of integers with
-     * `[s1, p1, o1, g1, s2, p2, o2, g3, ..., sn, pn, on, gn]`
+     * Returns an index list with every quads in a format of an array of
+     * integers `[s1, p1, o1, g1, s2, p2, o2, g3, ..., sn, pn, on, gn]`
      * where s1 is the subject of the first quad, p1 the predicate of the first
      * quad, ... and gn the graph of the last quad.
      */
-    _get_slice() {
-        if (this.slice === undefined) {
-            if (this.tree === undefined) {
+    _getIndexList() {
+        if (this.indexList === undefined) {
+            if (this.forest === undefined) {
                 return [];
             } else {
-                return this.tree.get_all(null, null, null, null);
+                return this.forest.get_all(null, null, null, null);
             }
         } else {
-            return this.slice;
+            return this.indexList;
         }
     }
 
@@ -657,7 +674,7 @@ class TreeDataset {
      * @param {*} quadFilterIteratee The function
      */
     filter(quadFilterIteratee) {
-        let resultingArray = new WrappedTreeIterator(this).filterInUInt32Array(quadFilterIteratee);
+        let resultingArray = new WasmTreeDatasetIterator(this).filterInUInt32Array(quadFilterIteratee);
 
         // The resulting array is a valid dataset for our structure, so we do
         // not fall back to wasm backend.
@@ -670,18 +687,19 @@ class TreeDataset {
      * @param {*} quadMapIteratee 
      */
     map(quadMapIteratee) {
-        let resultingArray = new WrappedTreeIterator(this).mapInUInt32Array(quadMapIteratee);
+        let resultingArray = new WasmTreeDatasetIterator(this).mapInUInt32Array(quadMapIteratee);
         
-        // Return the new tree :
-        // We can not return the tree with just the resultingArray as it may
+        // Return the new dataset:
+        // We can not return the dataset with just the resultingArray as it may
         // contain duplicated quads (for example if the map function always
         // returns the same quad). To filter duplicated quad, we integrate the
-        // slice into a Wasm managed tree (which resorts on Rust's BTreeSet)
-        // Conveniently, the `_ensure_has_modifiable_tree` function produces
+        // index list into a Web Assembly managed forest (which resorts on Rust's
+        // BTreeSet).
+        // Conveniently, the `_ensureHasModifiableForest` function produces
         // exactly this behaviour.
-        let newWrappedTree = new TreeDataset(this.indexer, resultingArray);
-        newWrappedTree._ensure_has_modifiable_tree();
-        return newWrappedTree;
+        let newWasmTreeDataset = new TreeDataset(this.indexer, resultingArray);
+        newWasmTreeDataset._ensureHasModifiableForest();
+        return newWasmTreeDataset;
     }
 
 
@@ -696,30 +714,31 @@ class TreeDataset {
      * - 0 if the other dataset is not an instance of TreeDataset
      * - 1 if the other dataset is an instance of TreeDataset but does not
      * share its indexer object with other
-     * - 2 if both this dataset and the other dataset are instances of Wrapped
-     * Tree and share the indexer object
+     * - 2 if both this dataset and the other dataset are instances of TreeDataset
+     * and share the indexer object
      * @param {*} other The other dataset
      */
     _get_degree_of_similarity(other) {
-        if (this._are_both_wrapped_trees != other._are_both_wrapped_trees) {
+        if (this._get_degree_of_similarity != other._get_degree_of_similarity) {
             // Different class
             return TreeDataset.SIMILARITY_NONE;
         } else if (this.indexer != other.indexer) {
             // Different indexer
             return TreeDataset.SIMILARITY_SAME_CLASS;
         } else {
-            // Same class and same indexer which means we can rely on a pure Rust implementation
+            // Same class and same indexer which means we can rely on pure
+            // Rust implementation
             return TreeDataset.SIMILARITY_SAME_INDEXER;
         }
     }
 
     _operationWithAnotherDataset(other, functionToCallIfSame, functionToCallIfDifferent, finalize) {
-        this._ensure_has_tree();
+        this._ensureHasForest();
 
         let similarity = this._get_degree_of_similarity(other);
 
         if (similarity == TreeDataset.SIMILARITY_SAME_INDEXER) {
-            other._ensure_has_tree();
+            other._ensureHasForest();
             return finalize(this, functionToCallIfSame(this, other));
         } else {
             return finalize(this, functionToCallIfDifferent(this, other));
@@ -733,12 +752,12 @@ class TreeDataset {
      */
     intersection(other) {
         return this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.insersect(rhs.tree),
+            (lhs, rhs) => lhs.forest.insersect(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
-                return lhs.tree.intersectSlice(rhsSlice);
+                return lhs.forest.intersectSlice(rhsSlice);
             },
-            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
         );
     }
 
@@ -748,12 +767,12 @@ class TreeDataset {
      */
     difference(other) {
         return this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.difference(rhs.tree),
+            (lhs, rhs) => lhs.forest.difference(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
-                return lhs.tree.differenceSlice(rhsSlice);
+                return lhs.forest.differenceSlice(rhsSlice);
             },
-            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
         );
     }
 
@@ -764,12 +783,12 @@ class TreeDataset {
      */
     union(other) {
         return this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.union(rhs.tree),
+            (lhs, rhs) => lhs.forest.union(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
-                return lhs.tree.unionSlice(rhsSlice);
+                return lhs.forest.unionSlice(rhsSlice);
             },
-            (lhs, tree) => new TreeDataset(lhs.indexer, undefined, tree)
+            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
         );
     }
     
@@ -780,13 +799,13 @@ class TreeDataset {
      */
     contains(other) {
         return this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.contains(rhs.tree),
+            (lhs, rhs) => lhs.forest.contains(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
                 if (rhsSlice == null) {
                     return false;
                 } else {
-                    return lhs.tree.containsSlice(rhsSlice);
+                    return lhs.forest.containsSlice(rhsSlice);
                 }
             },
             (_, answer) => answer
@@ -802,13 +821,13 @@ class TreeDataset {
      */
     equals(other) {
         return this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.has_same_elements(rhs.tree),
+            (lhs, rhs) => lhs.forest.has_same_elements(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
                 if (rhsSlice == null) {
                     return false;
                 } else {
-                    return lhs.tree.equalsSlice(rhsSlice);
+                    return lhs.forest.equalsSlice(rhsSlice);
                 }
             },
             (_, answer) => answer
@@ -824,13 +843,13 @@ class TreeDataset {
      */
     addAll(other) {
         this._operationWithAnotherDataset(other,
-            (lhs, rhs) => lhs.tree.addAll(rhs.tree),
+            (lhs, rhs) => lhs.forest.addAll(rhs.forest),
             (lhs, rhs) => {
                 // As buildSliceForUnion use the fact that a RDF.JS dataset
                 // have to implement Iterable<Quad>, a Sequence<Quad> can
                 // also be passed to buildSliceForUnion.
                 let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
-                lhs.tree.insert_all_from_slice(rhsSlice);
+                lhs.forest.insert_all_from_slice(rhsSlice);
             },
             (_1, _2) => { return; }
         );
@@ -857,15 +876,15 @@ class TreeDataset {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.tree === null && this.slice === null) return 0;
+        if (this.forest === null && this.indexList === null) return 0;
 
-        this._ensure_has_tree();
+        this._ensureHasForest();
 
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult == null) {
             return 0;
         } else {
-            return this.tree.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+            return this.forest.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
         }
     }
 
@@ -873,9 +892,11 @@ class TreeDataset {
      * Returns the number of trees that are currently used
      */
     numberOfUnderlyingTrees() {
-        if (this.tree === null)
+        if (this.forest !== null) {
+            return this.forest.number_of_underlying_trees();
+        } else {
             return 0;
-        return this.tree.number_of_underlying_trees();
+        }
     }
 
     /**
@@ -887,8 +908,8 @@ class TreeDataset {
      * @param {Boolean} graph 
      */
     ensureHasIndexFor(subject, predicate, object, graph) {
-        this._ensure_has_tree();
-        this.tree.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+        this._ensureHasForest();
+        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
     }
 }
 
@@ -904,25 +925,25 @@ function asyncCall(functionToAsync) {
 
 
 /**
- * A Stream of Quads with the elements contained in the passed slice
+ * A Stream of Quads with the elements contained in the passed index list
  */
 class WasmTreeStoreMatch extends Readable {
-    constructor(indexer, slice) {
+    constructor(indexer, indexList) {
         super({ "objectMode": true });
-        this.slice = slice;
+        this.list = indexList;
         this.indexer = indexer;
         this.index = 0;
     }
 
     _read() {
-        if (this.index >= this.slice.length) {
+        if (this.index >= this.list.length) {
             this.push(null);
         } else {
             let spogIndexes = [
-                this.slice[this.index],
-                this.slice[this.index + 1],
-                this.slice[this.index + 2],
-                this.slice[this.index + 3]
+                this.list[this.index],
+                this.list[this.index + 1],
+                this.list[this.index + 2],
+                this.list[this.index + 3]
             ];
 
             this.index += 4;
@@ -934,7 +955,7 @@ class WasmTreeStoreMatch extends Readable {
 
 /**
  * A RDF.JS compliant store (http://rdf.js.org/stream-spec/) that resorts to a
- * backend which is a tree structure in Web Assembly and a frontend which is a
+ * backend which is a forest structure in Web Assembly and a frontend which is a
  * Javascript map with a correspondance between RDF.JS terms and indexes
  * (numbers). 
  */
@@ -943,23 +964,23 @@ class TreeStore {
      * Builds an empty store
      */
     constructor() {
-        this.tree = new rust.TreedDataset();
+        this.forest = new wasmTreeBackend.TreedDataset();
         this.indexer = new Indexer();
 
-        if (registry) {
-            registry.register(this, this.tree);
+        if (woodcutter) {
+            woodcutter.register(this, this.forest);
         }
     }
 
     /**
-     * Ensures a backend tree is created
+     * Ensures a backend forest is created
      */
-    _ensure_has_tree() {
-        if (this.tree === null) {
-            this.tree = new rust.TreedDataset();
+    _ensureHasForest() {
+        if (this.forest === null) {
+            this.forest = new wasmTreeBackend.TreedDataset();
 
-            if (registry) {
-                registry.register(this, this.tree);
+            if (woodcutter) {
+                woodcutter.register(this, this.forest);
             }
         }
     }
@@ -973,14 +994,16 @@ class TreeStore {
      * @param {*} graph Required graph or null
      */
     match(subject, predicate, object, graph) {
-        if (this.tree === null) return new WasmTreeStoreMatch(this.indexer, []);
+        if (this.forest === null) return new WasmTreeStoreMatch(this.indexer, []);
 
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult == null) {
             return new WasmTreeStoreMatch(this.indexer, []);
         } else {
-            let slice = this.tree.get_all(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
-            return new WasmTreeStoreMatch(this.indexer, slice)
+            let indexList = this.forest.get_all(
+                matchResult[0], matchResult[1], matchResult[2], matchResult[3]
+            );
+            return new WasmTreeStoreMatch(this.indexer, indexList)
         }
     }
 
@@ -992,13 +1015,15 @@ class TreeStore {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.tree === null) return 0;
+        if (this.forest === null) return 0;
 
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult == null) {
             return 0;
         } else {
-            return this.tree.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+            return this.forest.match_count(
+                matchResult[0], matchResult[1], matchResult[2], matchResult[3]
+            );
         }
     }
 
@@ -1007,12 +1032,12 @@ class TreeStore {
      * @param {*} streamOfQuads The stream of quads
      */
     import(streamOfQuads) {
-        this._ensure_has_tree();
+        this._ensureHasForest();
         let that = this;
 
         streamOfQuads.on('data', quad => {
             let quadIndexes = that.indexer.findOrAddIndexes(quad);
-            that.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            that.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         });
 
         return streamOfQuads;
@@ -1023,18 +1048,18 @@ class TreeStore {
      * @param {*} streamOfQuads The stream of quads to remove
      */
     remove(streamOfQuads) {
-        // TODO : a valid strategy would be to batch remove the quads from the
-        // rust dataset using a buffer and the end event to remove the last
-        // buffered quads
+        // TODO : on(data) : Fill a buffer with the quads to delete
+        // When the buffer is "fulled" on(data) and "on(end)" : Batch remove
+        // from the forest.
         let that = this;
 
         streamOfQuads.on('data', quad => {
-            if (that.tree === null) return;
+            if (that.forest === null) return;
 
             let quadIndexes = that.indexer.findIndexes(quad);
 
             if (quadIndexes !== null) {
-                that.tree.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+                that.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
             }
         });
 
@@ -1051,15 +1076,17 @@ class TreeStore {
     removeMatches(subject, predicate, object, graph) {
         let eventEmitter = new EventEmitter();
 
-        let matchResult = this.indexer._matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
         if (matchResult == null) {
             eventEmitter.emit('end');
         } else {
             let that = this;
             
             asyncCall(() => {
-                if (that.tree !== null) {
-                    that.tree.deleteMatches(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+                if (that.forest !== null) {
+                    that.forest.deleteMatches(
+                        matchResult[0], matchResult[1], matchResult[2], matchResult[3]
+                    );
                 }
                 eventEmitter.emit('end');
             });
@@ -1082,16 +1109,16 @@ class TreeStore {
     }
 
     /**
-     * Synchronously liberates the memory assigned to this tree by the Web
+     * Synchronously liberates the memory assigned to this dataset by the Web
      * Assembly linear memory and empty the store.
      */
     free() {
-        if (this.tree !== null) {
-            this.tree.free();
-            this.tree = null;
+        if (this.forest !== null) {
+            this.forest.free();
+            this.forest = null;
 
-            if (registry) {
-                registry.unregister(this);
+            if (woodcutter) {
+                woodcutter.unregister(this);
             }
         }
     }
@@ -1101,9 +1128,9 @@ class TreeStore {
      * @param {*} quad The RDF.JS quad to add
      */
     addQuad(quad) {
-        this._ensure_has_tree();
+        this._ensureHasForest();
         let quadIndexes = this.indexer.findOrAddIndexes(quad);
-        this.tree.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
         return this;
     }
 
@@ -1115,13 +1142,11 @@ class TreeStore {
         return this.addQuad(quad);
     }
 
-    /**
-     * Returns the number of trees that are currently used
-     */
+    /** Returns the number of trees that are currently used */
     numberOfUnderlyingTrees() {
-        if (this.tree === null)
+        if (this.forest === null)
             return 0;
-        return this.tree.number_of_underlying_trees();
+        return this.forest.number_of_underlying_trees();
     }
 
     /**
@@ -1133,13 +1158,13 @@ class TreeStore {
      * @param {Boolean} graph 
      */
     ensureHasIndexFor(subject, predicate, object, graph) {
-        this._ensure_has_tree();
-        this.tree.ensure_has_index_for(subject, predicate, object, graph);
+        this._ensureHasForest();
+        this.forest.ensure_has_index_for(subject, predicate, object, graph);
     }
 }
 
 /**
- * Builds a new wasm tree store containing every quad from the stream
+ * Builds a new WasmTreeStore containing every quad from the stream
  * @param {RDF.Stream} stream The stream containing the quads.
  */
 function storeStream(stream) {
