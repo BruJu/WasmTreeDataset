@@ -829,6 +829,26 @@ function makeWrapperDataset(l) {
 
     })
 
+    describe('WasmTreeDataset', () => {
+      it('should be able to reuse the same index list of consecutive operations', () => {
+        let dataset = makeWrapperDataset();
+        const quad1 = rdf.quad(ex.subject1, ex.predicate, ex.object)
+        const quad2 = rdf.quad(ex.subject2, ex.predicate, ex.object)
+        dataset.add(quad1);
+        
+        for (let q of dataset) {}
+  
+        assert(dataset.hasIndexList());
+  
+        for (let q of dataset) {}
+        assert(dataset.hasIndexList());
+        dataset.add(quad2);
+        assert(dataset.hasForest());
+        assert(!dataset.hasIndexList());
+  
+  
+      })
+    })
 }
 
 module.exports = runTests
