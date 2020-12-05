@@ -22,6 +22,9 @@ This repository is :
 
 - A Javascript Wrapper class that tries to be RDF.JS.org compliant (the frontend)
 
+## Usage
+
+- Users are invited to the read the [wasm-tree-frontend](wasm-tree-frontend/README.md) documentation.
 
 
 ## Tests
