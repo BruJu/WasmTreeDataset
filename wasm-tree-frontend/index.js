@@ -41,6 +41,26 @@ class Indexer {
     }
 
     /**
+     * Clone the indexer with only index from the indexList
+     * @param {*} indexer 
+     * @param {*} indexList 
+     */
+    static duplicate(indexer, indexList) {
+        let self = new Indexer();
+        let indexes = [...new Set(indexList)]
+
+        for (const index of indexes) {
+            let term = indexer.indexToTerms[index];
+            self.termsToIndex[term] = index;
+            self.indexToTerms[index] = term;
+        }
+
+        self.nextValue = indexer.nextValue;
+
+        return self;
+    }
+
+    /**
      * Returns the graphy term bound to this index
      * @param {number} index The index
      */
@@ -901,7 +921,222 @@ class TreeDataset {
      * Returns the number of trees that are currently used
      */
     numberOfUnderlyingTrees() {
-        if (this.forest !== null) {
+        if (this.forest !== undefined) {
+            return this.forest.number_of_underlying_trees();
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * If the optimal index to answer the match request for the given pattern is not built,
+     * build it
+     * @param {Boolean} subject 
+     * @param {Boolean} predicate 
+     * @param {Boolean} object 
+     * @param {Boolean} graph 
+     */
+    ensureHasIndexFor(subject, predicate, object, graph) {
+        this._ensureHasForest();
+        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+    }
+}
+
+/**
+ * A RDF.JS DatasetCore that resorts on a wasm exported structure
+ * to manage its quads.
+ * 
+ * Unlike TreeDataset, this class doesn't use any cache process
+ * (indexList) and doesn't share its indexer with other instances.
+ * 
+ * In general case, TreeDataset/Dataset should be prefered to this class.
+ */
+class AlwaysForestDataset {
+    /**
+     * Constructs a WasmTreeDataset
+     * 
+     * indexList and forest arguments are used only if an indexer is provided
+     * @param {*} indexer If provided, the indexer to uses
+     * @param {*} indexList If provided, some numbers that represents the quads.
+     */
+    constructor(indexer, indexList) {
+        if (indexList != undefined) {
+            this.forest = wasmTreeBackend.TreedDataset.new_from_slice(indexList);
+            this.indexer = Indexer.duplicate(indexer, indexList);
+        } else {
+            this.forest = new wasmTreeBackend.TreedDataset();
+            this.indexer = new Indexer();
+        }
+
+        if (woodcutter) {
+            woodcutter.register(this, this.forest);
+        }
+    }
+
+    /**
+     * Ensure a forest is instanciated.
+     * 
+     * It is usefull if the user frees an instance and then reuse it.
+     */
+    _ensureHasForest() {
+        if (this.forest === undefined) {
+            this.forest = new wasmTreeBackend.TreedDataset();
+            
+            if (woodcutter) {
+                woodcutter.register(this, this.forest);
+            }
+        }
+    }
+
+    /**
+     * Liberates the memory allocated by Web Assembly for the forest and empties
+     * the dataset
+     */
+    free() {
+        if (this.forest !== undefined) {
+            this.forest.free();
+            this.forest = undefined;
+
+            if (woodcutter) {
+                woodcutter.unregister(this);
+            }
+        }
+    }
+
+    // ========================================================================
+    // ==== RDF.JS DatasetCore Implementation
+    // ==== https://rdf.js.org/dataset-spec/#datasetcore-interface
+
+    /**
+     * Returns the number of contained elements.
+     */
+    get size() {
+        if (this.forest !== undefined) {
+            return this.forest.size();
+        } else {
+            return 0;
+        }
+    }
+
+    [Symbol.iterator]() {
+        return new WasmTreeDatasetIterator(this);
+    }
+
+    /**
+     * Adds the quad to the dataset
+     * @param {*} quad 
+     */
+    add(quad) {
+        this._ensureHasForest();
+
+        let quadIndexes = this.indexer.findOrAddIndexes(quad);
+        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        return this;
+    }
+
+    /**
+     * Removes the quad from the dataset
+     * @param {*} quad 
+     */
+    delete(quad) {
+        let quadIndexes = this.indexer.findIndexes(quad);
+
+        if (quadIndexes !== null) {
+            this._ensureHasForest();
+            this.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns true if the dataset contains the quad
+     * @param {*} quad 
+     */
+    has(quad) {
+        let quadIndexes = this.indexer.findIndexes(quad);
+
+        if (quadIndexes === null) {
+            return false;
+        } else {
+            this._ensureHasForest();
+            return this.forest.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        }
+    }
+
+    /**
+     * Returns a new dataset with the specified subject, predicate, object and
+     * graph, if provided
+     * @param {*} subject The subject or null
+     * @param {*} predicate The predicate or null
+     * @param {*} object The object or null
+     * @param {*} graph The graph or null
+     */
+    match(subject, predicate, object, graph) {
+        // Rewrite match parameters with indexes
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        if (matchResult === null) {
+            return new AlwaysForestDataset(this.indexer);
+        }
+
+        // Match is valid
+        this._ensureHasForest();
+        let indexList = this.forest.get_all(
+            matchResult[0], matchResult[1], matchResult[2], matchResult[3]
+        );
+        return new AlwaysForestDataset(this.indexer, indexList);
+    }
+
+    /**
+     * Returns an index list with every quads in a format of an array of
+     * integers `[s1, p1, o1, g1, s2, p2, o2, g3, ..., sn, pn, on, gn]`
+     * where s1 is the subject of the first quad, p1 the predicate of the first
+     * quad, ... and gn the graph of the last quad.
+     */
+    _getIndexList() {
+        if (this.forest === undefined) {
+            return [];
+        } else {
+            return this.forest.get_all(null, null, null, null);
+        }
+    }
+
+    /**
+     * Returns an array with the quads in this dataset
+     */
+    toArray() {
+        return Array.from(this[Symbol.iterator]);
+    }
+
+    // ==== OTHER FUNCTIONS
+
+    /**
+     * Returns the number of quads that will match the given pattern
+     * May be used for SPARQL query planning
+     * 
+     * @param {*} subject Required subject or null 
+     * @param {*} predicate Required predicate or null
+     * @param {*} object Required object or null
+     * @param {*} graph Required graph or null
+     */
+    countQuads(subject, predicate, object, graph) {
+        if (this.forest === undefined && this.indexList === undefined) return 0;
+
+        this._ensureHasForest();
+
+        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        if (matchResult == null) {
+            return 0;
+        } else {
+            return this.forest.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+        }
+    }
+
+    /**
+     * Returns the number of trees that are currently used
+     */
+    numberOfUnderlyingTrees() {
+        if (this.forest !== undefined) {
             return this.forest.number_of_underlying_trees();
         } else {
             return 0;
@@ -1190,5 +1425,7 @@ module.exports.TreeStore = TreeStore;
 
 module.exports.Dataset = TreeDataset;
 module.exports.Store = TreeStore;
+
+module.exports.AlwaysForestDataset = AlwaysForestDataset;
 
 module.exports.storeStream = storeStream;
