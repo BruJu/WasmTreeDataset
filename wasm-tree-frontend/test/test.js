@@ -2,13 +2,17 @@
 
 var rdf = require('@graphy/core.data.factory')
 
-let wasmexport = require('../index.js')
+let wasmTreeMain = require('../index.js')
+let wasmTreeAlt  = require('../alternative.js')
 
+require('./WrappedDatasetCore')(rdf, wasmTreeMain.TreeDataset)
+require('./WrappedDataset'    )(rdf, wasmTreeMain.TreeDataset)
 
-let TreeDataset = wasmexport.TreeDataset;
-let TreeStore   = wasmexport.TreeStore;
+require('./WrappedDatasetCore')(rdf, wasmTreeMain.AlwaysForestDataset               , "AlwaysForestNoShared")
+require('./WrappedDatasetCore')(rdf, wasmTreeAlt.DatasetWithIndexListNoSharedIndexer, "IndexListNoShared")
+require('./WrappedDatasetCore')(rdf, wasmTreeAlt.DatasetWithSharedIndexerNoIndexList, "AlwaysForestShared")
 
-require('./WrappedDatasetCore')(rdf, TreeDataset)
-require('./WrappedDatasetCore')(rdf, wasmexport.AlwaysForestDataset)
-require('./WrappedDataset'    )(rdf, TreeDataset)
-require('./Store'             )(rdf, TreeStore)
+require('./Store'             )(rdf, wasmTreeMain.TreeStore)
+
+require('./AltTest')(rdf);
+

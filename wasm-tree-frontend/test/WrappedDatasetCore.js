@@ -4,7 +4,7 @@ const assert = require('assert')
 const namespace = require('@rdfjs/namespace')
 
 
-function runTests (rdf, DatasetClass) {
+function runTests (rdf, DatasetClass, name) {
   const ex = namespace('http://example.org/', rdf)
 
 function makeWrapperDataset(l) {
@@ -19,7 +19,7 @@ function makeWrapperDataset(l) {
 }
 
 
-  describe('DatasetCore', () => {
+  describe('DatasetCore - ' + name, () => {
     describe('size', () => {
       it('should be a number property', () => {
         const dataset = makeWrapperDataset()
