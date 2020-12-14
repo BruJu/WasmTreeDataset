@@ -2,7 +2,7 @@ const graphyFactory = require('@graphy/core.data.factory');
 const wasmTreeBackend = require('@bruju/wasm-tree-backend');
 const EventEmitter = require('events');
 const { Readable } = require('stream');
-const { Indexer, WasmTreeDatasetIterator } = require('./indexer.js')
+const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
 
 // Use the finalization registry if possible to free the memory by using the
 // garbage collector.
@@ -18,26 +18,26 @@ const woodcutter = (() => {
 
 /**
  * A RDF.JS DatasetCore that resorts on a wasm exported structure that
- * uses several TreeSet and an Indexer.
+ * uses several TreeSet and an TermIdMap.
  */
 class TreeDataset {
     /**
      * Constructs a WasmTreeDataset
      * 
-     * indexList and forest arguments are used only if an indexer is provided
-     * @param {*} indexer If provided, the indexer to uses
-     * @param {*} indexList If provided, some numbers that represents the quads.
+     * identifierList and forest arguments are used only if a termIdMap is provided
+     * @param {*} termIdMap If provided, the TermIdMap to uses
+     * @param {*} identifierList If provided, some numbers that represents the quads.
      * @param {*} forest If provided the used forest
      */
-    constructor(indexer, indexList, forest) {
-        if (indexer === undefined) {
-            this.indexer = new Indexer();
+    constructor(termIdMap, identifierList, forest) {
+        if (termIdMap === undefined) {
+            this.termIdMap = new TermIdMap();
             this.forest = new wasmTreeBackend.TreedDataset();
-            this.indexList = undefined;
+            this.identifierList = undefined;
         } else {
-            this.indexer = indexer;
+            this.termIdMap = termIdMap;
             this.forest = forest == null ? undefined : forest;
-            this.indexList = indexList == null ? undefined : indexList;
+            this.identifierList = identifierList == null ? undefined : identifierList;
         }
 
         if (woodcutter && this.forest !== undefined) {
@@ -48,13 +48,13 @@ class TreeDataset {
     /**
      * Falls back to the Web Assembly forest structure.
      * 
-     * If an index list is owned, the forest will contain the same quads. Else,
+     * If an identifier list is owned, the forest will contain the same quads. Else,
      * it will be empty.
      */
     _ensureHasForest() {
         if (this.forest === undefined) {
-            if (this.indexList !== undefined) {
-                this.forest = wasmTreeBackend.TreedDataset.new_from_slice(this.indexList);
+            if (this.identifierList !== undefined) {
+                this.forest = wasmTreeBackend.TreedDataset.new_from_slice(this.identifierList);
             } else {
                 this.forest = new wasmTreeBackend.TreedDataset();
             }
@@ -65,10 +65,10 @@ class TreeDataset {
         }
     }
 
-    /** Ensures a forest is owned and no index list is owned */
+    /** Ensures a forest is owned and no identifier list is owned */
     _ensureHasModifiableForest() {
         this._ensureHasForest();
-        this.indexList = undefined;
+        this.identifierList = undefined;
     }
 
     /**
@@ -85,7 +85,7 @@ class TreeDataset {
             }
         }
 
-        this.indexList = undefined;
+        this.identifierList = undefined;
     }
 
     /** Returns true if this dataset currently has a Web Assembly forest */
@@ -95,7 +95,7 @@ class TreeDataset {
      * Returns true if the dataset currently has a Javascript list that
      * represents the quads
      */
-    hasIndexList() { return this.indexList != undefined; }
+    hasIdentifierList() { return this.identifierList != undefined; }
 
     // ========================================================================
     // ==== RDF.JS DatasetCore Implementation
@@ -105,8 +105,8 @@ class TreeDataset {
      * Returns the number of contained elements.
      */
     get size() {
-        if (this.indexList !== undefined) {
-            return this.indexList.length / 4;
+        if (this.identifierList !== undefined) {
+            return this.identifierList.length / 4;
         } else if (this.forest !== undefined) {
             return this.forest.size();
         } else {
@@ -125,8 +125,8 @@ class TreeDataset {
     add(quad) {
         this._ensureHasModifiableForest();
 
-        let quadIndexes = this.indexer.findOrAddIndexes(quad);
-        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        let identifierQuad = this.termIdMap.convertToIdentifierQuad(quad);
+        this.forest.add(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         return this;
     }
 
@@ -135,11 +135,11 @@ class TreeDataset {
      * @param {*} quad 
      */
     delete(quad) {
-        let quadIndexes = this.indexer.findIndexes(quad);
+        let identifierQuad = this.termIdMap.tryConvertToIdentifierQuad(quad);
 
-        if (quadIndexes !== null) {
+        if (identifierQuad !== null) {
             this._ensureHasModifiableForest();
-            this.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            this.forest.remove(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         }
 
         return this;
@@ -150,15 +150,15 @@ class TreeDataset {
      * @param {*} quad 
      */
     has(quad) {
-        let quadIndexes = this.indexer.findIndexes(quad);
+        let identifierQuad = this.termIdMap.tryConvertToIdentifierQuad(quad);
 
-        if (quadIndexes === null) {
+        if (identifierQuad === null) {
             return false;
         } else {
             // TODO : Instead of building a forest, we could create a new intermediate state
-            // where the backend owns an indexList but has not yet built any tree.
+            // where the backend owns an identifierList but has not yet built any tree.
             this._ensureHasForest();
-            return this.forest.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            return this.forest.has(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         }
     }
 
@@ -171,18 +171,18 @@ class TreeDataset {
      * @param {*} graph The graph or null
      */
     match(subject, predicate, object, graph) {
-        // Rewrite match parameters with indexes
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        // Rewrite match parameters with identifiers
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult === null) {
-            return new TreeDataset(this.indexer);
+            return new TreeDataset(this.termIdMap);
         }
 
         // Match is valid
         this._ensureHasForest();
-        let indexList = this.forest.get_all(
+        let identifierList = this.forest.get_all(
             matchResult[0], matchResult[1], matchResult[2], matchResult[3]
         );
-        return new TreeDataset(this.indexer, indexList);
+        return new TreeDataset(this.termIdMap, identifierList);
     }
 
     // ========================================================================
@@ -203,7 +203,7 @@ class TreeDataset {
      * @param {?Term} graph The graph of the quads to remove, or null / undefined
      */
     deleteMatches(subject, predicate, object, graph) {
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult === null) {
             return this;
         }
@@ -213,29 +213,29 @@ class TreeDataset {
         return this;
     }
     
-    // == INDEX QUAD LIST EXPLOITATION
-    // Theses functions requires Web Assembly to return the whole array of
-    // indexes and do all the operation in Javascript.
+    // == IDENTIFIER QUAD LIST EXPLOITATION
+    // Theses functions requires Web Assembly to return an array of identifiers
+    // for every quad and do all the operation in Javascript.
     //
     // They are implemented with the naive way because they heavily resorts on
     // Javascript closures
 
     /**
-     * Returns an index list with every quads in a format of an array of
+     * Returns an identifier list with every quads in a format of an array of
      * integers `[s1, p1, o1, g1, s2, p2, o2, g3, ..., sn, pn, on, gn]`
      * where s1 is the subject of the first quad, p1 the predicate of the first
      * quad, ... and gn the graph of the last quad.
      */
-    _getIndexList() {
-        if (this.indexList === undefined) {
+    _asIdentifierList() {
+        if (this.identifierList === undefined) {
             if (this.forest === undefined) {
                 return [];
             }
 
-            this.indexList = this.forest.get_all(null, null, null, null);
+            this.identifierList = this.forest.get_all(null, null, null, null);
         }
 
-        return this.indexList;
+        return this.identifierList;
     }
 
     /**
@@ -334,7 +334,7 @@ class TreeDataset {
 
         // The resulting array is a valid dataset for our structure, so we do
         // not fall back to wasm backend.
-        return new TreeDataset(this.indexer, resultingArray);
+        return new TreeDataset(this.termIdMap, resultingArray);
     }
 
     /**
@@ -349,11 +349,11 @@ class TreeDataset {
         // We can not return the dataset with just the resultingArray as it may
         // contain duplicated quads (for example if the map function always
         // returns the same quad). To filter duplicated quad, we integrate the
-        // index list into a Web Assembly managed forest (which resorts on Rust's
-        // BTreeSet).
+        // identifier list into a Web Assembly managed forest (which resorts on
+        // Rust's BTreeSet).
         // Conveniently, the `_ensureHasModifiableForest` function produces
         // exactly this behaviour.
-        let newWasmTreeDataset = new TreeDataset(this.indexer, resultingArray);
+        let newWasmTreeDataset = new TreeDataset(this.termIdMap, resultingArray);
         newWasmTreeDataset._ensureHasModifiableForest();
         return newWasmTreeDataset;
     }
@@ -363,28 +363,28 @@ class TreeDataset {
 
     static get SIMILARITY_NONE() { return 0; }
     static get SIMILARITY_SAME_CLASS() { return 1; }
-    static get SIMILARITY_SAME_INDEXER() { return 2; }
+    static get SIMILARITY_SAME_TERMIDMAP() { return 2; }
 
     /**
      * Return :
      * - 0 if the other dataset is not an instance of TreeDataset
      * - 1 if the other dataset is an instance of TreeDataset but does not
-     * share its indexer object with other
+     * share its termIdMap object with other
      * - 2 if both this dataset and the other dataset are instances of TreeDataset
-     * and share the indexer object
+     * and share the termIdMap object
      * @param {*} other The other dataset
      */
     _get_degree_of_similarity(other) {
         if (this._get_degree_of_similarity != other._get_degree_of_similarity) {
             // Different class
             return TreeDataset.SIMILARITY_NONE;
-        } else if (this.indexer != other.indexer) {
-            // Different indexer
+        } else if (this.termIdMap != other.termIdMap) {
+            // Different TermIdMap
             return TreeDataset.SIMILARITY_SAME_CLASS;
         } else {
-            // Same class and same indexer which means we can rely on pure
+            // Same class and same TermIdMap which means we can rely on pure
             // Rust implementation
-            return TreeDataset.SIMILARITY_SAME_INDEXER;
+            return TreeDataset.SIMILARITY_SAME_TERMIDMAP;
         }
     }
 
@@ -393,7 +393,7 @@ class TreeDataset {
 
         let similarity = this._get_degree_of_similarity(other);
 
-        if (similarity == TreeDataset.SIMILARITY_SAME_INDEXER) {
+        if (similarity == TreeDataset.SIMILARITY_SAME_TERMIDMAP) {
             other._ensureHasForest();
             return finalize(this, functionToCallIfSame(this, other));
         } else {
@@ -410,10 +410,10 @@ class TreeDataset {
         return this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.insersect(rhs.forest),
             (lhs, rhs) => {
-                let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
                 return lhs.forest.intersectSlice(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
+            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
 
@@ -425,10 +425,10 @@ class TreeDataset {
         return this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.difference(rhs.forest),
             (lhs, rhs) => {
-                let rhsSlice = lhs.indexer.buildSliceForIntersection(rhs);
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
                 return lhs.forest.differenceSlice(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
+            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
 
@@ -441,10 +441,10 @@ class TreeDataset {
         return this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.union(rhs.forest),
             (lhs, rhs) => {
-                let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForUnion(rhs);
                 return lhs.forest.unionSlice(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.indexer, undefined, forest)
+            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
     
@@ -457,7 +457,7 @@ class TreeDataset {
         return this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.contains(rhs.forest),
             (lhs, rhs) => {
-                let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForEquality(rhs);
                 if (rhsSlice == null) {
                     return false;
                 } else {
@@ -479,7 +479,7 @@ class TreeDataset {
         return this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.has_same_elements(rhs.forest),
             (lhs, rhs) => {
-                let rhsSlice = lhs.indexer.buildSliceForEquals(rhs);
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForEquality(rhs);
                 if (rhsSlice == null) {
                     return false;
                 } else {
@@ -501,10 +501,10 @@ class TreeDataset {
         this._operationWithAnotherDataset(other,
             (lhs, rhs) => lhs.forest.addAll(rhs.forest),
             (lhs, rhs) => {
-                // As buildSliceForUnion use the fact that a RDF.JS dataset
+                // As buildIdentifierListForUnion use the fact that a RDF.JS dataset
                 // have to implement Iterable<Quad>, a Sequence<Quad> can
-                // also be passed to buildSliceForUnion.
-                let rhsSlice = lhs.indexer.buildSliceForUnion(rhs);
+                // also be passed to buildIdentifierListForUnion.
+                let rhsSlice = lhs.termIdMap.buildIdentifierListForUnion(rhs);
                 lhs.forest.insert_all_from_slice(rhsSlice);
             },
             (_1, _2) => { return; }
@@ -532,11 +532,11 @@ class TreeDataset {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.forest === undefined && this.indexList === undefined) return 0;
+        if (this.forest === undefined && this.identifierList === undefined) return 0;
 
         this._ensureHasForest();
 
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult == null) {
             return 0;
         } else {
@@ -574,25 +574,25 @@ class TreeDataset {
  * to manage its quads.
  * 
  * Unlike TreeDataset, this class doesn't use any cache process
- * (indexList) and doesn't share its indexer with other instances.
+ * (identifierList) and doesn't share its termIdMap with other instances.
  * 
  * In general case, TreeDataset/Dataset should be prefered to this class.
  */
 class AlwaysForestDataset {
     /**
-     * Constructs a WasmTreeDataset
+     * Constructs a AlwaysForestDataset
      * 
-     * indexList and forest arguments are used only if an indexer is provided
-     * @param {*} indexer If provided, the indexer to uses
-     * @param {*} indexList If provided, some numbers that represents the quads.
+     * identifierList and forest arguments are used only if a termIdMap is provided
+     * @param {*} termIdMap If provided, the TermIdMap to duplicate
+     * @param {*} identifierList If provided, some numbers that represents the quads.
      */
-    constructor(indexer, indexList) {
-        if (indexList != undefined) {
-            this.forest = wasmTreeBackend.TreedDataset.new_from_slice(indexList);
-            this.indexer = Indexer.duplicate(indexer, indexList);
+    constructor(termIdMap, identifierList) {
+        if (identifierList != undefined) {
+            this.forest = wasmTreeBackend.TreedDataset.new_from_slice(identifierList);
+            this.termIdMap = TermIdMap.duplicate(termIdMap, identifierList);
         } else {
             this.forest = new wasmTreeBackend.TreedDataset();
-            this.indexer = new Indexer();
+            this.termIdMap = new TermIdMap();
         }
 
         if (woodcutter) {
@@ -656,8 +656,8 @@ class AlwaysForestDataset {
     add(quad) {
         this._ensureHasForest();
 
-        let quadIndexes = this.indexer.findOrAddIndexes(quad);
-        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        let identifierQuad = this.termIdMap.convertToIdentifierQuad(quad);
+        this.forest.add(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         return this;
     }
 
@@ -666,11 +666,11 @@ class AlwaysForestDataset {
      * @param {*} quad 
      */
     delete(quad) {
-        let quadIndexes = this.indexer.findIndexes(quad);
+        let identifierQuad = this.termIdMap.tryConvertToIdentifierQuad(quad);
 
-        if (quadIndexes !== null) {
+        if (identifierQuad !== null) {
             this._ensureHasForest();
-            this.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            this.forest.remove(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         }
 
         return this;
@@ -681,13 +681,13 @@ class AlwaysForestDataset {
      * @param {*} quad 
      */
     has(quad) {
-        let quadIndexes = this.indexer.findIndexes(quad);
+        let identifierQuad = this.termIdMap.tryConvertToIdentifierQuad(quad);
 
-        if (quadIndexes === null) {
+        if (identifierQuad === null) {
             return false;
         } else {
             this._ensureHasForest();
-            return this.forest.has(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            return this.forest.has(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         }
     }
 
@@ -700,27 +700,27 @@ class AlwaysForestDataset {
      * @param {*} graph The graph or null
      */
     match(subject, predicate, object, graph) {
-        // Rewrite match parameters with indexes
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        // Rewrite match parameters with identifiers
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult === null) {
-            return new AlwaysForestDataset(this.indexer);
+            return new AlwaysForestDataset(this.termIdMap);
         }
 
         // Match is valid
         this._ensureHasForest();
-        let indexList = this.forest.get_all(
+        let identifierList = this.forest.get_all(
             matchResult[0], matchResult[1], matchResult[2], matchResult[3]
         );
-        return new AlwaysForestDataset(this.indexer, indexList);
+        return new AlwaysForestDataset(this.termIdMap, identifierList);
     }
 
     /**
-     * Returns an index list with every quads in a format of an array of
+     * Returns an identifier list with every quads in a format of an array of
      * integers `[s1, p1, o1, g1, s2, p2, o2, g3, ..., sn, pn, on, gn]`
      * where s1 is the subject of the first quad, p1 the predicate of the first
      * quad, ... and gn the graph of the last quad.
      */
-    _getIndexList() {
+    _asIdentifierList() {
         if (this.forest === undefined) {
             return [];
         } else {
@@ -747,11 +747,11 @@ class AlwaysForestDataset {
      * @param {*} graph Required graph or null
      */
     countQuads(subject, predicate, object, graph) {
-        if (this.forest === undefined && this.indexList === undefined) return 0;
+        if (this.forest === undefined && this.identifierList === undefined) return 0;
 
         this._ensureHasForest();
 
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult == null) {
             return 0;
         } else {
@@ -796,13 +796,13 @@ function asyncCall(functionToAsync) {
 
 
 /**
- * A Stream of Quads with the elements contained in the passed index list
+ * A Stream of Quads with the elements contained in the passed identifier list
  */
 class WasmTreeStoreMatch extends Readable {
-    constructor(indexer, indexList) {
+    constructor(termIdMap, identifierList) {
         super({ "objectMode": true });
-        this.list = indexList;
-        this.indexer = indexer;
+        this.list = identifierList;
+        this.termIdMap = termIdMap;
         this.index = 0;
     }
 
@@ -810,7 +810,7 @@ class WasmTreeStoreMatch extends Readable {
         if (this.index >= this.list.length) {
             this.push(null);
         } else {
-            let spogIndexes = [
+            let identifierQuad = [
                 this.list[this.index],
                 this.list[this.index + 1],
                 this.list[this.index + 2],
@@ -819,7 +819,7 @@ class WasmTreeStoreMatch extends Readable {
 
             this.index += 4;
 
-            this.push(this.indexer.getQuad(spogIndexes));
+            this.push(this.termIdMap.getQuad(identifierQuad));
         }
     }
 }
@@ -827,7 +827,7 @@ class WasmTreeStoreMatch extends Readable {
 /**
  * A RDF.JS compliant store (http://rdf.js.org/stream-spec/) that resorts to a
  * backend which is a forest structure in Web Assembly and a frontend which is a
- * Javascript map with a correspondance between RDF.JS terms and indexes
+ * Javascript map with a correspondance between RDF.JS terms and identifiers
  * (numbers). 
  */
 class TreeStore {
@@ -836,7 +836,7 @@ class TreeStore {
      */
     constructor() {
         this.forest = new wasmTreeBackend.TreedDataset();
-        this.indexer = new Indexer();
+        this.termIdMap = new TermIdMap();
 
         if (woodcutter) {
             woodcutter.register(this, this.forest);
@@ -865,16 +865,16 @@ class TreeStore {
      * @param {*} graph Required graph or null
      */
     match(subject, predicate, object, graph) {
-        if (this.forest === null) return new WasmTreeStoreMatch(this.indexer, []);
+        if (this.forest === null) return new WasmTreeStoreMatch(this.termIdMap, []);
 
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult == null) {
-            return new WasmTreeStoreMatch(this.indexer, []);
+            return new WasmTreeStoreMatch(this.termIdMap, []);
         } else {
-            let indexList = this.forest.get_all(
+            let identifierList = this.forest.get_all(
                 matchResult[0], matchResult[1], matchResult[2], matchResult[3]
             );
-            return new WasmTreeStoreMatch(this.indexer, indexList)
+            return new WasmTreeStoreMatch(this.termIdMap, identifierList)
         }
     }
 
@@ -888,7 +888,7 @@ class TreeStore {
     countQuads(subject, predicate, object, graph) {
         if (this.forest === null) return 0;
 
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult == null) {
             return 0;
         } else {
@@ -907,8 +907,8 @@ class TreeStore {
         let that = this;
 
         streamOfQuads.on('data', quad => {
-            let quadIndexes = that.indexer.findOrAddIndexes(quad);
-            that.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            let identifierQuad = that.termIdMap.convertToIdentifierQuad(quad);
+            that.forest.add(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         });
 
         return streamOfQuads;
@@ -927,10 +927,10 @@ class TreeStore {
         streamOfQuads.on('data', quad => {
             if (that.forest === null) return;
 
-            let quadIndexes = that.indexer.findIndexes(quad);
+            let identifierQuad = that.termIdMap.tryConvertToIdentifierQuad(quad);
 
-            if (quadIndexes !== null) {
-                that.forest.remove(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+            if (identifierQuad !== null) {
+                that.forest.remove(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
             }
         });
 
@@ -947,7 +947,7 @@ class TreeStore {
     removeMatches(subject, predicate, object, graph) {
         let eventEmitter = new EventEmitter();
 
-        let matchResult = this.indexer.matchIndexes(subject, predicate, object, graph);
+        let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult == null) {
             eventEmitter.emit('end');
         } else {
@@ -1000,8 +1000,8 @@ class TreeStore {
      */
     addQuad(quad) {
         this._ensureHasForest();
-        let quadIndexes = this.indexer.findOrAddIndexes(quad);
-        this.forest.add(quadIndexes[0], quadIndexes[1], quadIndexes[2], quadIndexes[3]);
+        let identifierQuad = this.termIdMap.convertToIdentifierQuad(quad);
+        this.forest.add(identifierQuad[0], identifierQuad[1], identifierQuad[2], identifierQuad[3]);
         return this;
     }
 

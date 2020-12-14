@@ -773,8 +773,7 @@ function makeWrapperDataset(l) {
             spaceship(acc.graph.value, quad.graph.value)
           ]
 
-          for (let index in r) {
-            let v = r[index]
+          for (let v of r) {
             if (v < 0) {
               return acc
             } else if (v > 0) {
@@ -830,7 +829,7 @@ function makeWrapperDataset(l) {
     })
 
     describe('WasmTreeDataset', () => {
-      it('should be able to reuse the same index list of consecutive operations', () => {
+      it('should be able to reuse the same identifier list of consecutive operations', () => {
         let dataset = makeWrapperDataset();
         const quad1 = rdf.quad(ex.subject1, ex.predicate, ex.object)
         const quad2 = rdf.quad(ex.subject2, ex.predicate, ex.object)
@@ -838,13 +837,13 @@ function makeWrapperDataset(l) {
         
         for (let q of dataset) {}
   
-        assert(dataset.hasIndexList());
+        assert(dataset.hasIdentifierList());
   
         for (let q of dataset) {}
-        assert(dataset.hasIndexList());
+        assert(dataset.hasIdentifierList());
         dataset.add(quad2);
         assert(dataset.hasForest());
-        assert(!dataset.hasIndexList());
+        assert(!dataset.hasIdentifierList());
   
   
       })
