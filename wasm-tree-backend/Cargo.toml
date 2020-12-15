@@ -1,7 +1,7 @@
 [package]
 name = "wasm-tree-backend"
-version = "0.1.0"
-authors = ["BruJu <bruyat.ju@live.fr>"]
+version = "0.2.0"
+authors = ["Julian Bruyat <bruyat.ju@live.fr>"]
 edition = "2018"
 license = "MIT"
 repository = "https://github.com/BruJu/WasmTreeDataset/tree/master/wasm-tree-backend"
@@ -11,17 +11,10 @@ description = "Backend for the Wasm Tree library"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-bjdatasets = { git = "https://github.com/BruJu/Portable-Reasoning-in-Web-Assembly/", rev = "655aacf3d360108ebadc652fd18107d54fa0cb4e", default-features = false }
+identifier_forest = { git = "https://github.com/BruJu/wasmify-sophia/", rev = "4bde1797a0df78a78157282f0280d4738080be31" }
 
-wasm-bindgen = "0.2.63"
-console_error_panic_hook = { version = "0.1.6", optional = true }
+wasm-bindgen = "=0.2.65"
 wee_alloc = { version = "0.4.5", optional = true }
-js-sys = "0.3.36"
-uuid = { version = "0.8.1", features = ["v4", "wasm-bindgen"] }
-maybe-owned = "0.3.2"
-once_cell = "1.3.1"
-arr_macro = "0.1.3"
-rand = "0.7.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"

@@ -1,4 +1,5 @@
-const wasmTreeBackend = require('@bruju/wasm-tree-backend');
+//const wasmTreeBackend = require('@bruju/wasm-tree-backend');
+const wasmTreeBackend = require('../wasm-tree-backend/pkg');
 const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
 
 // This module contains implementations that uses either the identifierList
@@ -14,7 +15,7 @@ class DatasetWithIdentifierList {
     constructor(termIdMap, identifierList, forest) {
         if (termIdMap === undefined) {
             this.termIdMap = new TermIdMap();
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             this.identifierList = undefined;
         } else {
             this.termIdMap = TermIdMap.duplicate(termIdMap, identifierList);
@@ -26,9 +27,9 @@ class DatasetWithIdentifierList {
     _ensureHasForest() {
         if (this.forest === undefined) {
             if (this.identifierList !== undefined) {
-                this.forest = wasmTreeBackend.TreedDataset.new_from_slice(this.identifierList);
+                this.forest = wasmTreeBackend.ForestOfIdentifierQuads.fromIdentifierList(this.identifierList);
             } else {
-                this.forest = new wasmTreeBackend.TreedDataset();
+                this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             }
         }
     }
@@ -124,24 +125,24 @@ class DatasetWithIdentifierList {
 
     ensureHasIndexFor(subject, predicate, object, graph) {
         this._ensureHasForest();
-        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+        this.forest.ensureHasIndexfor(!!subject, !!predicate, !!object, !!graph);
     }
 }
 
 class DatasetWithSharedTermIdMap {
     constructor(termIdMap, identifierList) {
         if (identifierList != undefined) {
-            this.forest = wasmTreeBackend.TreedDataset.new_from_slice(identifierList);
+            this.forest = wasmTreeBackend.ForestOfIdentifierQuads.fromIdentifierList(identifierList);
             this.termIdMap = termIdMap;
         } else {
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             this.termIdMap = new TermIdMap();
         }
     }
 
     _ensureHasForest() {
         if (this.forest === undefined) {
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
         }
     }
 
@@ -223,7 +224,7 @@ class DatasetWithSharedTermIdMap {
 
     ensureHasIndexFor(subject, predicate, object, graph) {
         this._ensureHasForest();
-        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+        this.forest.ensureHasIndexfor(!!subject, !!predicate, !!object, !!graph);
     }
 }
 

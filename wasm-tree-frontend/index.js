@@ -1,5 +1,6 @@
 const graphyFactory = require('@graphy/core.data.factory');
-const wasmTreeBackend = require('@bruju/wasm-tree-backend');
+//const wasmTreeBackend = require('@bruju/wasm-tree-backend');
+const wasmTreeBackend = require('../wasm-tree-backend/pkg');
 const EventEmitter = require('events');
 const { Readable } = require('stream');
 const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
@@ -32,7 +33,7 @@ class TreeDataset {
     constructor(termIdMap, identifierList, forest) {
         if (termIdMap === undefined) {
             this.termIdMap = new TermIdMap();
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             this.identifierList = undefined;
         } else {
             this.termIdMap = termIdMap;
@@ -54,9 +55,9 @@ class TreeDataset {
     _ensureHasForest() {
         if (this.forest === undefined) {
             if (this.identifierList !== undefined) {
-                this.forest = wasmTreeBackend.TreedDataset.new_from_slice(this.identifierList);
+                this.forest = wasmTreeBackend.ForestOfIdentifierQuads.fromIdentifierList(this.identifierList);
             } else {
-                this.forest = new wasmTreeBackend.TreedDataset();
+                this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             }
 
             if (woodcutter) {
@@ -411,7 +412,7 @@ class TreeDataset {
             (lhs, rhs) => lhs.forest.insersect(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
-                return lhs.forest.intersectSlice(rhsSlice);
+                return lhs.forest.intersectIdentifierList(rhsSlice);
             },
             (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
@@ -426,7 +427,7 @@ class TreeDataset {
             (lhs, rhs) => lhs.forest.difference(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
-                return lhs.forest.differenceSlice(rhsSlice);
+                return lhs.forest.differenceIdentifierList(rhsSlice);
             },
             (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
@@ -442,7 +443,7 @@ class TreeDataset {
             (lhs, rhs) => lhs.forest.union(rhs.forest),
             (lhs, rhs) => {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForUnion(rhs);
-                return lhs.forest.unionSlice(rhsSlice);
+                return lhs.forest.unionIdentifierList(rhsSlice);
             },
             (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
         );
@@ -461,7 +462,7 @@ class TreeDataset {
                 if (rhsSlice == null) {
                     return false;
                 } else {
-                    return lhs.forest.containsSlice(rhsSlice);
+                    return lhs.forest.containsIdentifierList(rhsSlice);
                 }
             },
             (_, answer) => answer
@@ -483,7 +484,7 @@ class TreeDataset {
                 if (rhsSlice == null) {
                     return false;
                 } else {
-                    return lhs.forest.equalsSlice(rhsSlice);
+                    return lhs.forest.equalsIdentifierList(rhsSlice);
                 }
             },
             (_, answer) => answer
@@ -505,7 +506,7 @@ class TreeDataset {
                 // have to implement Iterable<Quad>, a Sequence<Quad> can
                 // also be passed to buildIdentifierListForUnion.
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForUnion(rhs);
-                lhs.forest.insert_all_from_slice(rhsSlice);
+                lhs.forest.insertFromIdentifierList(rhsSlice);
             },
             (_1, _2) => { return; }
         );
@@ -540,7 +541,7 @@ class TreeDataset {
         if (matchResult == null) {
             return 0;
         } else {
-            return this.forest.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+            return this.forest.matchCount(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
         }
     }
 
@@ -549,7 +550,7 @@ class TreeDataset {
      */
     numberOfUnderlyingTrees() {
         if (this.forest !== undefined) {
-            return this.forest.number_of_underlying_trees();
+            return this.forest.numberOfUnderlyingTrees();
         } else {
             return 0;
         }
@@ -565,7 +566,7 @@ class TreeDataset {
      */
     ensureHasIndexFor(subject, predicate, object, graph) {
         this._ensureHasForest();
-        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+        this.forest.ensureHasIndexfor(!!subject, !!predicate, !!object, !!graph);
     }
 }
 
@@ -588,10 +589,10 @@ class AlwaysForestDataset {
      */
     constructor(termIdMap, identifierList) {
         if (identifierList != undefined) {
-            this.forest = wasmTreeBackend.TreedDataset.new_from_slice(identifierList);
+            this.forest = wasmTreeBackend.ForestOfIdentifierQuads.fromIdentifierList(identifierList);
             this.termIdMap = TermIdMap.duplicate(termIdMap, identifierList);
         } else {
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             this.termIdMap = new TermIdMap();
         }
 
@@ -607,7 +608,7 @@ class AlwaysForestDataset {
      */
     _ensureHasForest() {
         if (this.forest === undefined) {
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             
             if (woodcutter) {
                 woodcutter.register(this, this.forest);
@@ -755,7 +756,7 @@ class AlwaysForestDataset {
         if (matchResult == null) {
             return 0;
         } else {
-            return this.forest.match_count(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
+            return this.forest.matchCount(matchResult[0], matchResult[1], matchResult[2], matchResult[3]);
         }
     }
 
@@ -764,7 +765,7 @@ class AlwaysForestDataset {
      */
     numberOfUnderlyingTrees() {
         if (this.forest !== undefined) {
-            return this.forest.number_of_underlying_trees();
+            return this.forest.numberOfUnderlyingTrees();
         } else {
             return 0;
         }
@@ -780,7 +781,7 @@ class AlwaysForestDataset {
      */
     ensureHasIndexFor(subject, predicate, object, graph) {
         this._ensureHasForest();
-        this.forest.ensure_has_index_for(!!subject, !!predicate, !!object, !!graph);
+        this.forest.ensureHasIndexfor(!!subject, !!predicate, !!object, !!graph);
     }
 }
 
@@ -835,7 +836,7 @@ class TreeStore {
      * Builds an empty store
      */
     constructor() {
-        this.forest = new wasmTreeBackend.TreedDataset();
+        this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
         this.termIdMap = new TermIdMap();
 
         if (woodcutter) {
@@ -848,7 +849,7 @@ class TreeStore {
      */
     _ensureHasForest() {
         if (this.forest === null) {
-            this.forest = new wasmTreeBackend.TreedDataset();
+            this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
 
             if (woodcutter) {
                 woodcutter.register(this, this.forest);
@@ -892,7 +893,7 @@ class TreeStore {
         if (matchResult == null) {
             return 0;
         } else {
-            return this.forest.match_count(
+            return this.forest.matchCount(
                 matchResult[0], matchResult[1], matchResult[2], matchResult[3]
             );
         }
@@ -1017,7 +1018,7 @@ class TreeStore {
     numberOfUnderlyingTrees() {
         if (this.forest === null)
             return 0;
-        return this.forest.number_of_underlying_trees();
+        return this.forest.numberOfUnderlyingTrees();
     }
 
     /**
@@ -1030,7 +1031,7 @@ class TreeStore {
      */
     ensureHasIndexFor(subject, predicate, object, graph) {
         this._ensureHasForest();
-        this.forest.ensure_has_index_for(subject, predicate, object, graph);
+        this.forest.ensureHasIndexfor(subject, predicate, object, graph);
     }
 }
 
