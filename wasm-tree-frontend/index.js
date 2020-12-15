@@ -548,9 +548,9 @@ class TreeDataset {
     /**
      * Returns the number of trees that are currently used
      */
-    numberOfUnderlyingTrees() {
+    getNumberOfLivingTrees() {
         if (this.forest !== undefined) {
-            return this.forest.numberOfUnderlyingTrees();
+            return this.forest.getNumberOfLivingTrees();
         } else {
             return 0;
         }
@@ -763,9 +763,9 @@ class AlwaysForestDataset {
     /**
      * Returns the number of trees that are currently used
      */
-    numberOfUnderlyingTrees() {
+    getNumberOfLivingTrees() {
         if (this.forest !== undefined) {
-            return this.forest.numberOfUnderlyingTrees();
+            return this.forest.getNumberOfLivingTrees();
         } else {
             return 0;
         }
@@ -1015,10 +1015,10 @@ class TreeStore {
     }
 
     /** Returns the number of trees that are currently used */
-    numberOfUnderlyingTrees() {
+    getNumberOfLivingTrees() {
         if (this.forest === null)
             return 0;
-        return this.forest.numberOfUnderlyingTrees();
+        return this.forest.getNumberOfLivingTrees();
     }
 
     /**

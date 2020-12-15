@@ -1,6 +1,6 @@
 {
   "name": "@bruju/wasm-tree",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "RDF Dataset and Store using Web Assembly",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "author": "BruJu",
   "license": "MIT",
   "dependencies": {
-    "@bruju/wasm-tree-backend": "^0.1.0",
+    "@bruju/wasm-tree-backend": "^0.2.0",
     "@graphy/core.data.factory": "^4.2.1",
     "events": "^3.1.0",
     "stream": "0.0.2"

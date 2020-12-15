@@ -366,23 +366,16 @@ impl ForestOfIdentifierQuads {
 impl ForestOfIdentifierQuads {
     /// Ensures the best tree to search quads matching the given pattern is built
     #[wasm_bindgen(js_name = ensureHasIndexfor)]
-    pub fn ensure_has_index_for(&self, s: bool, p: bool, o: bool, g: bool) {
-        let spog: [Option<u32>; 4] = [
-            if s { Some(0) } else { None },
-            if p { Some(0) } else { None },
-            if o { Some(0) } else { None },
-            if g { Some(0) } else { None },
-        ];
-
-        self.trees.search_all_matching_quads(spog, true);
+    pub fn ensure_has_index_for(&mut self, s: bool, p: bool, o: bool, g: bool) {
+        self.trees.ensure_has_index_for(s, p, o, g);
     }
 }
 
 #[wasm_bindgen(js_class="ForestOfIdentifierQuads")]
 impl ForestOfIdentifierQuads {
-    /// Counts the number of underlying trees
-    #[wasm_bindgen(js_name = numberOfUnderlyingTrees)]
-    pub fn number_of_underlying_trees(&self) -> usize {
-        1 + self.number_of_optional_built_trees()
+    /// Counts the number of living trees
+    #[wasm_bindgen(js_name = getNumberOfLivingTrees)]
+    pub fn get_number_of_living_trees(&self) -> usize {
+        self.trees.get_number_of_living_trees()
     }
 }
