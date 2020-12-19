@@ -1,5 +1,4 @@
-//const wasmTreeBackend = require('@bruju/wasm-tree-backend');
-const wasmTreeBackend = require('../wasm-tree-backend/pkg');
+const wasmTreeBackend = require('@bruju/wasm-tree-backend');
 const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
 
 // This module contains implementations that uses either the identifierList

@@ -1,9 +1,9 @@
 const graphyFactory = require('@graphy/core.data.factory');
-//const wasmTreeBackend = require('@bruju/wasm-tree-backend');
-const wasmTreeBackend = require('../wasm-tree-backend/pkg');
+const wasmTreeBackend = require('@bruju/wasm-tree-backend');
 const EventEmitter = require('events');
 const { Readable } = require('stream');
 const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
+const { DatasetWithIdentifierList, DatasetWithSharedTermIdMap } = require('./alternative.js');
 
 // Use the finalization registry if possible to free the memory by using the
 // garbage collector.
@@ -21,7 +21,7 @@ const woodcutter = (() => {
  * A RDF.JS DatasetCore that resorts on a wasm exported structure that
  * uses several TreeSet and an TermIdMap.
  */
-class TreeDataset {
+class WasmTreeDataset {
     /**
      * Constructs a WasmTreeDataset
      * 
@@ -175,7 +175,7 @@ class TreeDataset {
         // Rewrite match parameters with identifiers
         let matchResult = this.termIdMap.matchIdentifiers(subject, predicate, object, graph);
         if (matchResult === null) {
-            return new TreeDataset(this.termIdMap);
+            return new WasmTreeDataset(this.termIdMap);
         }
 
         // Match is valid
@@ -183,7 +183,7 @@ class TreeDataset {
         let identifierList = this.forest.get_all(
             matchResult[0], matchResult[1], matchResult[2], matchResult[3]
         );
-        return new TreeDataset(this.termIdMap, identifierList);
+        return new WasmTreeDataset(this.termIdMap, identifierList);
     }
 
     // ========================================================================
@@ -335,7 +335,7 @@ class TreeDataset {
 
         // The resulting array is a valid dataset for our structure, so we do
         // not fall back to wasm backend.
-        return new TreeDataset(this.termIdMap, resultingArray);
+        return new WasmTreeDataset(this.termIdMap, resultingArray);
     }
 
     /**
@@ -354,7 +354,7 @@ class TreeDataset {
         // Rust's BTreeSet).
         // Conveniently, the `_ensureHasModifiableForest` function produces
         // exactly this behaviour.
-        let newWasmTreeDataset = new TreeDataset(this.termIdMap, resultingArray);
+        let newWasmTreeDataset = new WasmTreeDataset(this.termIdMap, resultingArray);
         newWasmTreeDataset._ensureHasModifiableForest();
         return newWasmTreeDataset;
     }
@@ -368,24 +368,24 @@ class TreeDataset {
 
     /**
      * Return :
-     * - 0 if the other dataset is not an instance of TreeDataset
-     * - 1 if the other dataset is an instance of TreeDataset but does not
+     * - 0 if the other dataset is not an instance of WasmTreeDataset
+     * - 1 if the other dataset is an instance of WasmTreeDataset but does not
      * share its termIdMap object with other
-     * - 2 if both this dataset and the other dataset are instances of TreeDataset
+     * - 2 if both this dataset and the other dataset are instances of WasmTreeDataset
      * and share the termIdMap object
      * @param {*} other The other dataset
      */
     _get_degree_of_similarity(other) {
         if (this._get_degree_of_similarity != other._get_degree_of_similarity) {
             // Different class
-            return TreeDataset.SIMILARITY_NONE;
+            return WasmTreeDataset.SIMILARITY_NONE;
         } else if (this.termIdMap != other.termIdMap) {
             // Different TermIdMap
-            return TreeDataset.SIMILARITY_SAME_CLASS;
+            return WasmTreeDataset.SIMILARITY_SAME_CLASS;
         } else {
             // Same class and same TermIdMap which means we can rely on pure
             // Rust implementation
-            return TreeDataset.SIMILARITY_SAME_TERMIDMAP;
+            return WasmTreeDataset.SIMILARITY_SAME_TERMIDMAP;
         }
     }
 
@@ -394,7 +394,7 @@ class TreeDataset {
 
         let similarity = this._get_degree_of_similarity(other);
 
-        if (similarity == TreeDataset.SIMILARITY_SAME_TERMIDMAP) {
+        if (similarity == WasmTreeDataset.SIMILARITY_SAME_TERMIDMAP) {
             other._ensureHasForest();
             return finalize(this, functionToCallIfSame(this, other));
         } else {
@@ -414,7 +414,7 @@ class TreeDataset {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
                 return lhs.forest.intersectIdentifierList(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
+            (lhs, forest) => new WasmTreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
 
@@ -429,7 +429,7 @@ class TreeDataset {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForIntersection(rhs);
                 return lhs.forest.differenceIdentifierList(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
+            (lhs, forest) => new WasmTreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
 
@@ -445,7 +445,7 @@ class TreeDataset {
                 let rhsSlice = lhs.termIdMap.buildIdentifierListForUnion(rhs);
                 return lhs.forest.unionIdentifierList(rhsSlice);
             },
-            (lhs, forest) => new TreeDataset(lhs.termIdMap, undefined, forest)
+            (lhs, forest) => new WasmTreeDataset(lhs.termIdMap, undefined, forest)
         );
     }
     
@@ -574,10 +574,10 @@ class TreeDataset {
  * A RDF.JS DatasetCore that resorts on a wasm exported structure
  * to manage its quads.
  * 
- * Unlike TreeDataset, this class doesn't use any cache process
+ * Unlike WasmTreeDataset, this class doesn't use any cache process
  * (identifierList) and doesn't share its termIdMap with other instances.
  * 
- * In general case, TreeDataset/Dataset should be prefered to this class.
+ * In general case, WasmTreeDataset should be prefered to this class.
  */
 class AlwaysForestDataset {
     /**
@@ -831,7 +831,7 @@ class WasmTreeStoreMatch extends Readable {
  * Javascript map with a correspondance between RDF.JS terms and identifiers
  * (numbers). 
  */
-class TreeStore {
+class WasmTreeStore {
     /**
      * Builds an empty store
      */
@@ -1040,7 +1040,7 @@ class TreeStore {
  * @param {RDF.Stream} stream The stream containing the quads.
  */
 function storeStream(stream) {
-    const store = new TreeStore();
+    const store = new WasmTreeStore();
     return new Promise(resolve => store.import(stream).on("end", () => resolve(store)));
 }
 
@@ -1048,12 +1048,11 @@ function storeStream(stream) {
 
 module.exports = {};
 
-module.exports.TreeDataset = TreeDataset;
-module.exports.TreeStore = TreeStore;
-
-module.exports.Dataset = TreeDataset;
-module.exports.Store = TreeStore;
+module.exports.Dataset = WasmTreeDataset;
+module.exports.Store = WasmTreeStore;
 
 module.exports.AlwaysForestDataset = AlwaysForestDataset;
+module.exports.DatasetWithIdentifierList = DatasetWithIdentifierList;
+module.exports.DatasetWithSharedTermIdMap = DatasetWithSharedTermIdMap;
 
 module.exports.storeStream = storeStream;

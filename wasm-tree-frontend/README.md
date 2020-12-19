@@ -7,6 +7,39 @@ numbers (`unsigned int` on 32 bits).
 Correspondance between numbers and actual terms is done in Javascript.
 
 
+## Quick example in nodejs
+
+```javascript
+// Import wasmtree
+const wasmtree = require('@bruju/wasm-tree');
+
+// Import other rdf libraries as wasm tree doesn't provide any RDF.JS data model
+const rdf = require('@graphy/core.data.factory');
+const namespace = require('@rdfjs/namespace');
+const ex = namespace('http://example.org/', rdf);
+
+// Populate a dataset
+let dataset = new wasmtree.Dataset();
+dataset.add(rdf.quad(ex.subject, ex.predicate, ex.object));
+dataset.add(rdf.quad(ex.subject, ex.predicate, ex.otherobject));
+dataset.add(rdf.quad(ex.other  , ex.predicate, ex.object));
+
+// Count number of quads with the object ex.object
+const occObjectInObject = dataset.match(null, null, ex.object).size;
+console.log(occObjectInObject + " quads have " + ex.object.value + " in object position");
+
+// Free the Web Assembly linear memory
+dataset.free();
+```
+
+You can run this example by writing the code in a file named `example.js` and then run :
+
+```
+$ npm install @bruju/wasm-tree @graphy/core.data.factory @rdfjs/namespace
+$ node example.js
+2 quads have http://example.org/object in object position
+```
+
 ## How to instanciate a dataset or a store
 
 ```javascript

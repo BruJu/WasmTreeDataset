@@ -110,7 +110,7 @@ impl ForestOfIdentifierQuads {
         }
     }
 
-    /// Builds a TreeDataset from an identifier list of quads
+    /// Builds a ForestOfIdentifierQuads from an identifier list of quads
     /// 
     /// If you have previously extracted an identifier list from get_all, you
     /// can easily build a new dataset with this function.

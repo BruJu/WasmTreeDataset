@@ -2,17 +2,16 @@
 
 var rdf = require('@graphy/core.data.factory')
 
-let wasmTreeMain = require('../index.js')
-let wasmTreeAlt  = require('../alternative.js')
+let wasmTree = require('../index.js')
 
-require('./WrappedDatasetCore')(rdf, wasmTreeMain.TreeDataset)
-require('./WrappedDataset'    )(rdf, wasmTreeMain.TreeDataset)
+require('./WrappedDatasetCore')(rdf, wasmTree.Dataset, "WasmTree")
+require('./WrappedDataset'    )(rdf, wasmTree.Dataset)
 
-require('./WrappedDatasetCore')(rdf, wasmTreeMain.AlwaysForestDataset      , "AlwaysForestNoShared")
-require('./WrappedDatasetCore')(rdf, wasmTreeAlt.DatasetWithIdentifierList , "IdentifierListNoShared")
-require('./WrappedDatasetCore')(rdf, wasmTreeAlt.DatasetWithSharedTermIdMap, "AlwaysForestShared")
+require('./WrappedDatasetCore')(rdf, wasmTree.AlwaysForestDataset       , "AlwaysForestNoShared")
+require('./WrappedDatasetCore')(rdf, wasmTree.DatasetWithIdentifierList , "IdentifierListNoShared")
+require('./WrappedDatasetCore')(rdf, wasmTree.DatasetWithSharedTermIdMap, "AlwaysForestShared")
 
-require('./Store'             )(rdf, wasmTreeMain.TreeStore)
+require('./Store'             )(rdf, wasmTree.Store)
 
 require('./AltTest')(rdf);
 
