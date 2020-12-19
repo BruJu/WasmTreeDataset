@@ -7,7 +7,7 @@ numbers (`unsigned int` on 32 bits).
 Correspondance between numbers and actual terms is done in Javascript.
 
 
-## Quick example in nodejs
+## Quick example in Node.js
 
 ```javascript
 // Import wasmtree
