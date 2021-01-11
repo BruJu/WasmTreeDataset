@@ -1,7 +1,6 @@
 
-use identifier_forest::Block;
-use identifier_forest::IndexingForest4;
-use identifier_forest::TermRole;
+use identifier_forest::quad::{Block, GSPO};
+use identifier_forest::compat::IndexingForest4;
 use wasm_bindgen::prelude::*;
 
 
@@ -30,7 +29,7 @@ impl ForestOfIdentifierQuads {
 impl ForestOfIdentifierQuads {
     /// Returns the number of quads
     pub fn size(&self) -> usize {
-        self.trees.base_tree.1.len()
+        self.trees.0.len()
     }
 }
 
@@ -54,7 +53,7 @@ impl ForestOfIdentifierQuads {
 impl ForestOfIdentifierQuads {
     /// Returns true if the tree has the specified quad
     pub fn has(&self, s: u32, p: u32, o: u32, g: u32) -> bool {
-        self.trees.base_tree.0.contains(&self.trees.base_tree.1, &[s, p, o, g])
+        self.trees.0.contains([s, p, o, g])
     }
 }
 
@@ -129,10 +128,7 @@ impl ForestOfIdentifierQuads {
     /// Returns the number of optional trees that are currently instancied
     pub fn number_of_optional_built_trees(&self) -> usize {
         self.trees
-            .optional_trees
-            .iter()
-            .filter(|pair| pair.1.get().is_some())
-            .count()
+            .get_number_of_living_trees()
     }
 }
 
@@ -154,34 +150,31 @@ impl ForestOfIdentifierQuads {
             }
         } else {
             // 2- If there are a lot, rebuild tree
-            let spog = [s, p, o, g];
-
-            // Delete every secondary tree. We do this first to let the new tree
-            // eventually reuse the allocated memory of the former trees
-            for optional_tree_tuple in self.trees.optional_trees.iter_mut() {
-                optional_tree_tuple.1.take();
-            }
-    
-            // Build the new filtered tree and replace the old one
-            let new_tree = self.trees.base_tree.0.filter_to_tree(&self.trees.base_tree.1, &spog);
-            self.trees.base_tree.1 = new_tree;
+            let new_tree = ForestOfIdentifierQuads {
+                trees: IndexingForest4 (
+                    self.trees.base_tree().iter().filter(|blk| !blk.matches(&[s, p, o, g])).copied().map(|blk| -> [u32; 4] { blk.into() }).collect()
+                )
+            };
+            *self = new_tree;
         }
     }
 }
 
 impl ForestOfIdentifierQuads {
-    pub fn are_trivially_mergeable_trees(lhs: &Self, rhs: &Self) -> bool {
-        // TODO : static_assert
-        // TODO : be able to merge indexes that are not the first from new
-        let expected_block = [TermRole::Object, TermRole::Graph, TermRole::Predicate, TermRole::Subject];
-        lhs.trees.base_tree.0.get_term_roles() == &expected_block && rhs.trees.base_tree.0.get_term_roles() == &expected_block
+    pub fn are_trivially_mergeable_trees(_lhs: &Self, _rhs: &Self) -> bool {
+        // always true since block order is now determined statically
+        // TODO: all tests using this method should probably be removed now
+        true
     }
 
     fn new_tree_from_fusion<'a, BlockIterator>(iterator: BlockIterator) -> Self
-        where BlockIterator: Iterator<Item=&'a Block<u32>> {
-        let mut new_tree = Self::new();
-        new_tree.trees.base_tree.1.extend(iterator);
-        new_tree
+        where BlockIterator: Iterator<Item=&'a GSPO<u32>>
+    {
+        ForestOfIdentifierQuads{
+            trees: IndexingForest4(
+                iterator.copied().map(|blk| -> [u32; 4] { blk.into() }).collect()
+            )
+        }
     }
 }
 
@@ -190,7 +183,7 @@ impl ForestOfIdentifierQuads {
     #[wasm_bindgen]
     pub fn insersect(&self, other: &ForestOfIdentifierQuads) -> ForestOfIdentifierQuads {
         if ForestOfIdentifierQuads::are_trivially_mergeable_trees(self, other) {
-            Self::new_tree_from_fusion(self.trees.base_tree.1.intersection(&other.trees.base_tree.1))
+            Self::new_tree_from_fusion(self.trees.base_tree().intersection(&other.trees.base_tree()))
         } else {
             let mut new_tree = Self::new();
 
@@ -256,7 +249,7 @@ impl ForestOfIdentifierQuads {
     #[wasm_bindgen]
     pub fn union(&self, other: &ForestOfIdentifierQuads) -> Self {
         if Self::are_trivially_mergeable_trees(self, other) {
-            Self::new_tree_from_fusion(self.trees.base_tree.1.union(&other.trees.base_tree.1))
+            Self::new_tree_from_fusion(self.trees.base_tree().union(&other.trees.base_tree()))
         } else {
             let mut new_tree = Self::new();
 
@@ -278,7 +271,7 @@ impl ForestOfIdentifierQuads {
     #[wasm_bindgen]
     pub fn difference(&self, other: &ForestOfIdentifierQuads) -> Self {
         if Self::are_trivially_mergeable_trees(self, other) {
-            Self::new_tree_from_fusion(self.trees.base_tree.1.difference(&other.trees.base_tree.1))
+            Self::new_tree_from_fusion(self.trees.base_tree().difference(&other.trees.base_tree()))
         } else {
             let mut new_tree = Self::new();
 
@@ -298,7 +291,7 @@ impl ForestOfIdentifierQuads {
     #[wasm_bindgen]
     pub fn contains(&self, other: &ForestOfIdentifierQuads) -> bool {
         if Self::are_trivially_mergeable_trees(self, other) {
-            self.trees.base_tree.1.is_superset(&other.trees.base_tree.1)
+            self.trees.base_tree().is_superset(&other.trees.base_tree())
         } else {
             for quad in other.trees.filter([None, None, None, None]) {
                 if !self.has(quad[0], quad[1], quad[2], quad[3]) {
@@ -332,7 +325,7 @@ impl ForestOfIdentifierQuads {
 impl ForestOfIdentifierQuads {
     #[wasm_bindgen(js_name = equalsIdentifierList)]
     pub fn equals_slice(&self, other: &[u32]) -> bool {
-        if self.trees.base_tree.1.len() != other.len() / 4 {
+        if self.trees.0.len() != other.len() / 4 {
             return false;
         }
 
@@ -344,7 +337,7 @@ impl ForestOfIdentifierQuads {
 impl ForestOfIdentifierQuads {
     #[wasm_bindgen]
     pub fn has_same_elements(&self, other: &ForestOfIdentifierQuads) -> bool {
-        if self.trees.base_tree.1.len() != other.trees.base_tree.1.len() {
+        if self.trees.0.len() != other.trees.0.len() {
             return false;
         }
 
