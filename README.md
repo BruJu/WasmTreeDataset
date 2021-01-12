@@ -23,6 +23,20 @@ This repository is :
 
 - Run `./mocha` (`npm install mocha -g` if needed) in wasm-tree-frontend.
 
+### Testing the backend
+
+Tests are only done in Javascript from the front end. To test frontend modification you need to:
+
+- Modify `wasm-tree-frontend` dependencies to use the local `wasm-tree-backend`:
+    - in `package.json` use this dependency `"@bruju/wasm-tree-backend": "../wasm-tree-backend/pkg",` in place of the current one.
+- Build the backend
+    - `cd wasm-tree-backend`
+    - `./buildpkg.py`
+- Go in the frontend
+    - `cd ../wasm-tree-frontend`
+    - `npm install`
+    - `mocha`
+
 ## Build
 
 *Compile and package the frontend:*
