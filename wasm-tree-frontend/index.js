@@ -5,18 +5,6 @@ const { Readable } = require('stream');
 const { TermIdMap, WasmTreeDatasetIterator } = require('./termidmap.js')
 const { DatasetWithIdentifierList, DatasetWithSharedTermIdMap } = require('./alternative.js');
 
-// Use the finalization registry if possible to free the memory by using the
-// garbage collector.
-const woodcutter = (() => {
-    try {
-        const r = new FinalizationRegistry(rustforest => rustforest.free());
-        return r;
-    } catch (err) {
-        // FinalizationRegistry is not available
-        return undefined;
-    }
-})();
-
 /**
  * A RDF.JS DatasetCore that resorts on a wasm exported structure that
  * uses several TreeSet and an TermIdMap.
@@ -40,10 +28,6 @@ class WasmTreeDataset {
             this.forest = forest == null ? undefined : forest;
             this.identifierList = identifierList == null ? undefined : identifierList;
         }
-
-        if (woodcutter && this.forest !== undefined) {
-            woodcutter.register(this, this.forest);
-        }
     }
 
     /**
@@ -58,10 +42,6 @@ class WasmTreeDataset {
                 this.forest = wasmTreeBackend.ForestOfIdentifierQuads.fromIdentifierList(this.identifierList);
             } else {
                 this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
-            }
-
-            if (woodcutter) {
-                woodcutter.register(this, this.forest);
             }
         }
     }
@@ -80,10 +60,6 @@ class WasmTreeDataset {
         if (this.forest !== undefined) {
             this.forest.free();
             this.forest = undefined;
-
-            if (woodcutter) {
-                woodcutter.unregister(this);
-            }
         }
 
         this.identifierList = undefined;
@@ -595,10 +571,6 @@ class AlwaysForestDataset {
             this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
             this.termIdMap = new TermIdMap();
         }
-
-        if (woodcutter) {
-            woodcutter.register(this, this.forest);
-        }
     }
 
     /**
@@ -609,10 +581,6 @@ class AlwaysForestDataset {
     _ensureHasForest() {
         if (this.forest === undefined) {
             this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
-            
-            if (woodcutter) {
-                woodcutter.register(this, this.forest);
-            }
         }
     }
 
@@ -624,10 +592,6 @@ class AlwaysForestDataset {
         if (this.forest !== undefined) {
             this.forest.free();
             this.forest = undefined;
-
-            if (woodcutter) {
-                woodcutter.unregister(this);
-            }
         }
     }
 
@@ -838,10 +802,6 @@ class WasmTreeStore {
     constructor() {
         this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
         this.termIdMap = new TermIdMap();
-
-        if (woodcutter) {
-            woodcutter.register(this, this.forest);
-        }
     }
 
     /**
@@ -850,10 +810,6 @@ class WasmTreeStore {
     _ensureHasForest() {
         if (this.forest === null) {
             this.forest = new wasmTreeBackend.ForestOfIdentifierQuads();
-
-            if (woodcutter) {
-                woodcutter.register(this, this.forest);
-            }
         }
     }
 
@@ -988,10 +944,6 @@ class WasmTreeStore {
         if (this.forest !== null) {
             this.forest.free();
             this.forest = null;
-
-            if (woodcutter) {
-                woodcutter.unregister(this);
-            }
         }
     }
 

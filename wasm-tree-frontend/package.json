@@ -1,6 +1,6 @@
 {
   "name": "@bruju/wasm-tree",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "RDF Dataset and Store using Web Assembly",
   "main": "index.js",
   "scripts": {
