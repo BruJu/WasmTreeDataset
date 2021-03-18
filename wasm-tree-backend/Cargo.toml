@@ -11,7 +11,7 @@ description = "Backend for the Wasm Tree library"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-identifier_forest = { git = "https://github.com/BruJu/wasmify-sophia/", rev = "f9ea6314bb93b62c39fae4f9aab3ed0bd90e5654" }
+identifier_forest = { git = "https://github.com/BruJu/wasmify-sophia/", branch = "id_quad_order_conservation", rev = "01a7666fbfa8fb16d40bda3f453482f7e693b512" }
 
 wasm-bindgen = "=0.2.65"
 wee_alloc = { version = "0.4.5", optional = true }
