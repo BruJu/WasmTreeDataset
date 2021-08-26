@@ -10,7 +10,7 @@ import {
   DatasetWithIdentifierList,
   DatasetWithSharedTermIdMap
 } from './lib/alternative';
-import { DatasetCore, Store, Term, Quad, Stream } from "rdf-js";
+import { DatasetCore, Store, Term, Quad, Stream } from "@rdfjs/types";
 
 /**
  * A RDF.JS DatasetCore that resorts on a wasm exported structure that

@@ -1,5 +1,5 @@
 import * as graphyFactory from '@graphy/core.data.factory';
-import { DatasetCore, Quad, Term } from 'rdf-js';
+import { DatasetCore, Quad, Term } from '@rdfjs/types';
 
 export interface Concisable { concise(): string; }
 

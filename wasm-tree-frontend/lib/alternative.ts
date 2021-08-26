@@ -1,5 +1,5 @@
 import { ForestOfIdentifierQuads } from '@bruju/wasm-tree-backend';
-import { Quad, Term } from 'rdf-js';
+import { Quad, Term } from '@rdfjs/types';
 import { TermIdMap, WasmTreeDatasetIterator, WasmTreeLike } from './termidmap';
 
 // This module contains implementations that uses either the identifierList
