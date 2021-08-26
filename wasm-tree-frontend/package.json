@@ -1,10 +1,13 @@
 {
   "name": "@bruju/wasm-tree",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "RDF Dataset and Store using Web Assembly",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
-    "test": "mocha"
+    "test": "npx mocha -r ts-node/register test/*.js",
+    "prepublish": "npx tsc",
+    "build": "npx tsc"
   },
   "repository": {
     "type": "git",
@@ -20,7 +23,15 @@
   },
   "devDependencies": {
     "@rdfjs/namespace": "^1.1.0",
-    "arrayify-stream": "^1.0.0",
-    "streamify-array": "^1.0.1"
-  }
+    "rdf-js": "^4.0.2",
+    "streamify-array": "^1.0.1",
+    "ts-node": "^10.2.1",
+    "typescript": "^4.3.5"
+  },
+  "files": [
+    "lib/**/*.d.ts",
+    "lib/**/*.js",
+    "index.d.ts",
+    "index.js"
+  ]
 }

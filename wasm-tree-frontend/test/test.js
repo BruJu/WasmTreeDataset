@@ -2,7 +2,7 @@
 
 var rdf = require('@graphy/core.data.factory')
 
-let wasmTree = require('../index.js')
+let wasmTree = require('../index')
 
 require('./WrappedDatasetCore')(rdf, wasmTree.Dataset, "WasmTree")
 require('./WrappedDataset'    )(rdf, wasmTree.Dataset)

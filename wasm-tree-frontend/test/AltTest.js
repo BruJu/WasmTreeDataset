@@ -1,8 +1,8 @@
 const assert = require('assert')
 const namespace = require('@rdfjs/namespace')
 
-let wasmTreeMain = require('../index.js')
-let wasmTreeAlt  = require('../alternative.js')
+let wasmTreeMain = require('../index')
+let wasmTreeAlt  = require('../lib/alternative')
 
 function runTests (rdf) {
   const ex = namespace('http://example.org/', rdf)

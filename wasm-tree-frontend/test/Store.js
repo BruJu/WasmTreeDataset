@@ -2,7 +2,6 @@ const assert = require('assert')
 const namespace = require('@rdfjs/namespace')
 
 const streamifyArray = require('streamify-array')
-const arrayifyStream = require('arrayify-stream')
 
 function runTests (rdf, StoreClass) {
   const ex = namespace('http://example.org/', rdf)
