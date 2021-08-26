@@ -1,5 +1,5 @@
 declare module '@graphy/core.data.factory' {
-  import { DefaultGraph, NamedNode, Quad, Term } from 'rdf-js';
+  import { DefaultGraph, NamedNode, Quad, Term } from '@rdfjs/types';
   interface Concisable { concise(): string; }
 
   export function defaultGraph(): DefaultGraph & Concisable;
