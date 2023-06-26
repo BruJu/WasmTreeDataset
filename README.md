@@ -12,7 +12,7 @@ This repository is :
 
 - A BTreeDataset written in Rust that uses numbers (the backend)
 
-- A Javascript Wrapper class that tries to be RDF.JS.org compliant (the frontend)
+- A Javascript Wrapper class that is [RDF/JS](https://rdf.js.og) compliant (the frontend)
 
 ## Getting Started / Usage
 
@@ -39,6 +39,8 @@ Tests are only done in Javascript from the front end. To test frontend modificat
 
 ## Build
 
+[Rust](https://www.rust-lang.org/tools/install) and [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) are needed.
+
 *Compile and package the frontend:*
 
 - `cd wasm-tree-backend/`
@@ -50,11 +52,7 @@ Tests are only done in Javascript from the front end. To test frontend modificat
 *Package the backend:*
 
 - `cd wasm-tree-frontend`
-- `wasm-pack pack`
-
-## TODO
-
-- Finish the Dataset (partial) implementation
+- `npm pack`
 
 ## Benchmarks
 
