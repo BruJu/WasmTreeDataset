@@ -5,7 +5,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "test": "npx mocha -r ts-node/register test/*.js",
+    "test": "npx mocha -r node_modules/ts-node/register test/*.js",
     "prepublish": "npx tsc",
     "build": "npx tsc"
   },
