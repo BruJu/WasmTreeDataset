@@ -35,7 +35,7 @@ dataset.free();
 You can run this example by writing the code in a file named `example.js` and then run :
 
 ```
-$ npm install @bruju/wasm-tree @graphy/core.data.factory @rdfjs/namespace
+$ npm install @bruju/wasm-tree @graphy/core.data.factory @rdfjs/namespace@1.1.0
 $ node example.js
 2 quads have http://example.org/object in object position
 ```
